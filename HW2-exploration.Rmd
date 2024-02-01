@@ -1,0 +1,90 @@
+
+# Read in libraries 
+```{r}
+library(tidyverse)
+library(here)
+library(lubridate)
+library(janitor)
+library(sf)
+library(tidycensus)
+```
+
+# Read in Data
+```{r}
+# load API key
+source(here::here("KEYS.R"))
+census_api_key(censusKEY)
+
+# read in affordable housing projects in LA from 2003 to present
+ah_raw <- read_csv(here("data/LAHD_Affordable_Housing_Projects_List__2003_to_Present__20240119.csv")) %>% 
+  clean_names()
+
+zoning_raw <- read_csv(here("data/ZONING_PLY.csv")) %>% 
+  clean_names()
+```
+
+# Wrangle data 
+```{r}
+ah_clean <- ah_raw %>% 
+  mutate(fun_date = as.Date(date_funded, tryFormats = c("%m/%d/%Y"))) %>% 
+  mutate(year = lubridate::year(fun_date)) %>% 
+  select(name, year, fun_date, construction_type, site_community, total_units = project_total_units, housing_type, lahd_funded, in_service_date, gps_coords_on_map)
+
+zoning_geom <- zoning_raw %>% 
+  mutate(geometry = st_as_sfc(the_geom))
+
+# plot(zoning_geom$geometry)
+```
+
+# Visualizations
+
+```{r}
+# looking at total units
+ah_clean %>% 
+  ggplot(aes(x = year, y = total_units, color = construction_type)) +
+  geom_point() 
+
+# looking at the total construction of affordable housing in each year 
+ah_clean %>% 
+  group_by(year) %>% 
+  summarize(total_construction = n()) %>% 
+  ggplot(aes(x = year, y = total_construction)) +
+  geom_col() +
+  theme_classic()
+
+# looking at the total construction of affordable housing in each year 
+ah_clean %>% 
+  group_by(year) %>% 
+  summarize(total_funding = sum(lahd_funded)) %>% 
+  ggplot(aes(x = year, y = total_funding)) +
+  geom_col() +
+  theme_classic()
+
+# top 10 locations with affordable housing built in them
+ah_clean %>% 
+  group_by(site_community) %>% 
+  summarize(total_district = n()) %>% 
+  slice_max(order_by = total_district,
+            n = 10) %>%
+  ggplot(aes(x = fct_reorder(site_community, total_district), y = total_district)) +
+  geom_col() +
+  coord_flip() +
+  theme_classic()
+
+# trying to get income of districts
+ca_county <- get_acs(
+  state = "CA",
+  county = "Los Angeles",
+  geography = "county subdivision",
+  variables = "B19013_001",
+  geometry = TRUE,
+  year = 2020
+)
+
+# ah_clean %>% 
+#   ggplot(aes(x = year, y = total_units, color = construction_type)) +
+#   geom_point() +
+#   facet_wrap(~construction_type)
+
+```
+
