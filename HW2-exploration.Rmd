@@ -1,6 +1,6 @@
 
 # Read in libraries 
-```{r}
+```{r include = FALSE}
 library(tidyverse)
 library(here)
 library(lubridate)
@@ -19,19 +19,43 @@ census_api_key(censusKEY)
 ah_raw <- read_csv(here("data/LAHD_Affordable_Housing_Projects_List__2003_to_Present__20240119.csv")) %>% 
   clean_names()
 
+neighborhood_census <- read_csv(here("data/Census_Data_by_Neighborhood_Council_20240201.csv")) %>%
+  clean_names()
+
 zoning_raw <- read_csv(here("data/ZONING_PLY.csv")) %>% 
   clean_names()
 ```
 
-# Wrangle data 
+# Wrangle / Clean data 
 ```{r}
 ah_clean <- ah_raw %>% 
   mutate(fun_date = as.Date(date_funded, tryFormats = c("%m/%d/%Y"))) %>% 
   mutate(year = lubridate::year(fun_date)) %>% 
-  select(name, year, fun_date, construction_type, site_community, total_units = project_total_units, housing_type, lahd_funded, in_service_date, gps_coords_on_map)
+  select(name, year, fun_date, construction_type, site_community, total_units = project_total_units, housing_type, lahd_funded, in_service_date, gps_coords_on_map) %>% 
+  mutate
 
-zoning_geom <- zoning_raw %>% 
-  mutate(geometry = st_as_sfc(the_geom))
+# remove NC from the names
+neighborhood_census$nc_name <- gsub(" NC", "", neighborhood_census$nc_name)
+
+neighborhood_clean <- neighborhood_census %>% 
+  select(nc_name, total_population, in_poverty, owner_occ, renter_occ) %>% 
+  mutate(nc_name = case_when(nc_name == "WESTLAKE NORTH" ~ "WESTLAKE",
+                             nc_name == "CENTRAL HOLLYWOOD" ~ "HOLLYWOOD",
+                             nc_name == "SOUTH CENTRAL" ~ "CENTRAL",
+                             nc_name == "EAST HOLLYWOOD" ~ "HOLLYWOOD HILLS",
+                             nc_name == "BEL AIR-BEVERLY CREST" ~ "CRESTVIEW",
+                             nc_name == "WILSHIRE CENTER - KOREATOWN" ~ "KOREATOWN",
+                             nc_name == "SUNLAND-TUJUNGA" ~ "SUNLAND",
+                             nc_name == "ELYSIAN VALLEY RIVERSIDE" ~ "ELYSIAN VALLEY",
+                             nc_name == "SILVER LAKE" ~ "SILVERLAKE",
+                             nc_name == "UNITED NEIGHBORHOODS OF THE HISTORIC ARLINGTON HEIGHTS, WEST ADAMS, AND JEFFERSON PARK COMMUNITY" ~ "JEFFERSON PARK",
+                             nc_name == "NORTH HILLS EAST" ~ "NORTH HILLS",
+                             .default = as.character(nc_name))) %>% 
+  mutate(poverty_percent = (in_poverty/total_population)*100)
+  
+
+# zoning_geom <- zoning_raw %>% 
+#   mutate(geometry = st_as_sfc(the_geom))
 
 # plot(zoning_geom$geometry)
 ```
@@ -61,12 +85,31 @@ ah_clean %>%
   theme_classic()
 
 # top 10 locations with affordable housing built in them
-ah_clean %>% 
+ah_top <- ah_clean %>% 
   group_by(site_community) %>% 
   summarize(total_district = n()) %>% 
   slice_max(order_by = total_district,
-            n = 10) %>%
+            n = 20) %>% 
+  left_join(neighborhood_clean, by = join_by(site_community == nc_name)) %>% 
+  na.omit()
+
+ah_top %>% 
   ggplot(aes(x = fct_reorder(site_community, total_district), y = total_district)) +
+  geom_col() +
+  coord_flip() +
+  theme_classic()
+
+# bottom 10 locations with affordable housing built in them
+ah_bottom <- ah_clean %>% 
+  group_by(site_community) %>% 
+  summarize(total_district = n()) %>% 
+  slice_min(order_by = total_district,
+            n = 25) %>% 
+  left_join(neighborhood_clean, by = join_by(site_community == nc_name)) %>% 
+  na.omit()
+
+ah_bottom %>% 
+  ggplot(aes(x = fct_reorder(site_community, in_poverty), y = in_poverty)) +
   geom_col() +
   coord_flip() +
   theme_classic()
