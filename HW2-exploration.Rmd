@@ -1,3 +1,8 @@
+---
+title: "Assignment #2 (Part 2)"
+author: "Luna Herschenfeld-Catalán she/her"
+date: 2024-02-03
+---
 
 # Read in libraries 
 ```{r include = FALSE}
@@ -7,10 +12,14 @@ library(lubridate)
 library(janitor)
 library(sf)
 library(tidycensus)
+library(patchwork)
 ```
 
 # Read in Data
-```{r}
+
+Load in the affordable housing data, the neighborhood census data, the california county census data, and zoning data. 
+
+```{r message=FALSE, warning=FALSE, attr.output=FALSE}
 # load API key
 source(here::here("KEYS.R"))
 census_api_key(censusKEY)
@@ -22,23 +31,66 @@ ah_raw <- read_csv(here("data/LAHD_Affordable_Housing_Projects_List__2003_to_Pre
 neighborhood_census <- read_csv(here("data/Census_Data_by_Neighborhood_Council_20240201.csv")) %>%
   clean_names()
 
+
+# load list of variables that I could access
+v17 <- load_variables(2020, "acs5", cache = TRUE)
+
+# Median income of districts
+ca_county <- get_acs(
+  state = "CA",
+  county = "Los Angeles",
+  geography = "county subdivision",
+  variables = "B19013_001",
+  geometry = TRUE,
+  year = 2020
+)
+
+# total number of people using public transportation per subdivision
+ca_county_transportation <- get_acs(
+  state = "CA",
+  county = "Los Angeles",
+  geography = "county subdivision",
+  variables = "B08128_031",
+  geometry = TRUE,
+  year = 2020
+)
+
+# read in zoning data 
 zoning_raw <- read_csv(here("data/ZONING_PLY.csv")) %>% 
   clean_names()
 ```
 
 # Wrangle / Clean data 
+
 ```{r}
+# clean affordable housing data 
 ah_clean <- ah_raw %>% 
-  mutate(fun_date = as.Date(date_funded, tryFormats = c("%m/%d/%Y"))) %>% 
-  mutate(year = lubridate::year(fun_date)) %>% 
-  select(name, year, fun_date, construction_type, site_community, total_units = project_total_units, housing_type, lahd_funded, in_service_date, gps_coords_on_map) %>% 
-  mutate
+  mutate(fun_date = as.Date(date_funded, tryFormats = c("%m/%d/%Y"))) %>% # make date_funded as date
+  mutate(year = lubridate::year(fun_date)) %>% # make into year column 
+  select(name, year, fun_date, construction_type, site_community, total_units = project_total_units, 
+         housing_type, lahd_funded, in_service_date, gps_coords_on_map) %>% 
+  mutate(gps_coords_on_map = gsub("[POINT()]", # elements that you want to remove
+                                  "", # replace with blank
+                                  gps_coords_on_map)) %>% # remove these elements from gps column 
+  separate_wider_delim(gps_coords_on_map, 
+                       delim = " ", names = c("empty", "coords"), # separate space from before the coordinates
+                       too_many = "merge") %>% 
+  separate_wider_delim(coords, delim = " ", names = c("Longitude", "Latitude"), # split lat and long coords
+                       too_many = "merge") %>% 
+  select(-empty) %>% 
+  st_as_sf(coords = c("Longitude", "Latitude"), # make into geometry object
+                 crs = st_crs(ca_county)) %>% 
+  st_join(ca_county) %>% 
+  select(-c(GEOID, NAME, variable, moe)) # remove these columns
+  
 
 # remove NC from the names
 neighborhood_census$nc_name <- gsub(" NC", "", neighborhood_census$nc_name)
 
 neighborhood_clean <- neighborhood_census %>% 
   select(nc_name, total_population, in_poverty, owner_occ, renter_occ) %>% 
+  
+  # replace character strings of left and convert to right
   mutate(nc_name = case_when(nc_name == "WESTLAKE NORTH" ~ "WESTLAKE",
                              nc_name == "CENTRAL HOLLYWOOD" ~ "HOLLYWOOD",
                              nc_name == "SOUTH CENTRAL" ~ "CENTRAL",
@@ -50,8 +102,8 @@ neighborhood_clean <- neighborhood_census %>%
                              nc_name == "SILVER LAKE" ~ "SILVERLAKE",
                              nc_name == "UNITED NEIGHBORHOODS OF THE HISTORIC ARLINGTON HEIGHTS, WEST ADAMS, AND JEFFERSON PARK COMMUNITY" ~ "JEFFERSON PARK",
                              nc_name == "NORTH HILLS EAST" ~ "NORTH HILLS",
-                             .default = as.character(nc_name))) %>% 
-  mutate(poverty_percent = (in_poverty/total_population)*100)
+                             .default = as.character(nc_name))) %>% # keep all other cell values as are
+  mutate(poverty_percent = (in_poverty/total_population)*100) # make percentage of poverty
   
 
 # zoning_geom <- zoning_raw %>% 
@@ -60,16 +112,34 @@ neighborhood_clean <- neighborhood_census %>%
 # plot(zoning_geom$geometry)
 ```
 
-# Visualizations
+# Visualizations for Homework 2 
+
+## Part 2a
 
 ```{r}
 # looking at total units
-ah_clean %>% 
+construction_type_point <- ah_clean %>% 
+  drop_na() %>% 
   ggplot(aes(x = year, y = total_units, color = construction_type)) +
   geom_point() 
 
+# looking at total units for construction
+construction_type_boxplot <- ah_clean %>% 
+  drop_na() %>% 
+  ggplot(aes(x = construction_type, y = total_units)) +
+  geom_boxplot() +
+  coord_flip()
+
+# looking at total units for housing type
+housing_type_boxplot <- ah_clean %>% 
+  drop_na() %>% 
+  ggplot(aes(x = housing_type, y = total_units)) +
+  geom_boxplot() +
+  coord_flip()
+
 # looking at the total construction of affordable housing in each year 
-ah_clean %>% 
+total_construction_bar <- ah_clean %>% 
+  drop_na() %>% 
   group_by(year) %>% 
   summarize(total_construction = n()) %>% 
   ggplot(aes(x = year, y = total_construction)) +
@@ -77,17 +147,48 @@ ah_clean %>%
   theme_classic()
 
 # looking at the total construction of affordable housing in each year 
-ah_clean %>% 
+lahd_funding <- ah_clean %>% 
+  drop_na() %>% 
   group_by(year) %>% 
   summarize(total_funding = sum(lahd_funded)) %>% 
   ggplot(aes(x = year, y = total_funding)) +
   geom_col() +
   theme_classic()
 
+construction_type_point
+construction_type_boxplot
+lahd_funding / total_construction_bar
+housing_type_boxplot
+```
+## Part 2b
+
+1. I have learned that the construction type of affordable housing built in LA since 2003 with the most number of total units has been Rehabs. This is interesting given that the type of housing that has the most units is Family. I don't know if there is some overlap here, or what the qualifications for going into rehab. Another interesting pattern is that the number of total projects each year has gine up and down, with two kind of peaks in 2006 and 2021, but for the most part remained steady. However, the amount of funding from the LA housing development has increased what looks like exponentially since 2003. This is interesting seeing as there are not a large increase in projects. I am wondering where the funding was coming from before, or if there is another variable driving cost. 
+
+2. I have gained some insight into the questions regarding the way affordable housing has changed over the last 20 years, and including the spatial distribution and quantity of units. Given the change in funding, I think I am closer to answering how LA is adhering to the 2015 execuutive directive 13. I think I want to look more into the directive, and really understand the elements that were required. I also want to posible find some data on funding for affordable housing, or maybe funding for other areas. I drew up some preliminary spatial maps of were AH is being developed and there is a concentration in 2 county subdivisions. I want to see if there are proposed projects somewhere, and where those are compared to where the projects that got accepted are. I would also like to see the impact of what those developments have had, and if there is data on what happens to the people that get affordable housing. I am curious to see the way that affordable housing could be used a means for social mobility. 
+
+3. I already encountered some challenges when it came to matching neighborhoods, so I think that in the future I will probably encounter the same issues but now I know how to tackle those. Also, I feel like the AH data is at a finer spatial resolution in terms of neighborhood than other types of census data. This is challenging because seeing specific patterns might be hard. Also, I want to parse out the types of construction/housing type to have a more specific data set instead of having categories that are joined. In terms of looking at individuals data, I am doubtful that there will be a dataset following pre/post affordable housing so I will see if that is a good question.
+
+
+# Continuation of exploration of geospatial patterns
+
+```{r eval = FALSE}
+ah_clean %>% 
+  group_by(site_community) %>% 
+  summarize(total_district = n(),
+            median_income = mean(estimate)) 
+
+ah_clean %>% 
+  ggplot() +
+  geom_sf(data = ca_county_transportation, aes(fill = estimate)) +
+  geom_sf(aes(color = housing_type))
+```
+
+```{r eval = FALSE}
 # top 10 locations with affordable housing built in them
 ah_top <- ah_clean %>% 
   group_by(site_community) %>% 
-  summarize(total_district = n()) %>% 
+  summarize(total_district = n(),
+            median_income = mean(estimate)) %>% 
   slice_max(order_by = total_district,
             n = 20) %>% 
   left_join(neighborhood_clean, by = join_by(site_community == nc_name)) %>% 
@@ -102,7 +203,8 @@ ah_top %>%
 # bottom 10 locations with affordable housing built in them
 ah_bottom <- ah_clean %>% 
   group_by(site_community) %>% 
-  summarize(total_district = n()) %>% 
+  summarize(total_district = n(),
+            median_income = mean(estimate)) %>% 
   slice_min(order_by = total_district,
             n = 25) %>% 
   left_join(neighborhood_clean, by = join_by(site_community == nc_name)) %>% 
@@ -113,16 +215,6 @@ ah_bottom %>%
   geom_col() +
   coord_flip() +
   theme_classic()
-
-# trying to get income of districts
-ca_county <- get_acs(
-  state = "CA",
-  county = "Los Angeles",
-  geography = "county subdivision",
-  variables = "B19013_001",
-  geometry = TRUE,
-  year = 2020
-)
 
 # ah_clean %>% 
 #   ggplot(aes(x = year, y = total_units, color = construction_type)) +
