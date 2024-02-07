@@ -70,6 +70,21 @@ zoning_raw <- read_csv(here("data/ZONING_PLY.csv")) %>%
   clean_names()
 
 vacancy_us <- read_csv(here::here("data", "ACS_Housing_Units_Vacancy_Status_Boundaries_-_Census_Tract.csv"))
+
+# join the census vacancy estimates with the census median income 
+la_tract <- ca_county_tracts %>% 
+  mutate(census_tract = gsub(", Los Angeles County, California", # elements that you want to remove
+                                  "", # replace with blank
+                                  NAME)) %>% 
+  inner_join(vacancy_LA) %>% 
+  rename(median_income = estimate) %>% 
+  select(-NAME)
+
+tract_neighborhood <- read_csv(here("data/Census_Tract_Locations__LA__20240206.csv")) %>% 
+  mutate(census_tract = gsub(", Los Angeles County, California", # elements that you want to remove
+                                  "", # replace with blank
+                                  Tract)) %>% 
+  select(-Tract, census_tract, Neighborhood, Latitude, Longitude) 
 ```
 
 # Wrangle / Clean data 
@@ -93,7 +108,8 @@ ah_clean <- ah_raw %>%
   st_as_sf(coords = c("Longitude", "Latitude"), # make into geometry object
                  crs = st_crs(ca_county)) %>% 
   st_join(ca_county) %>% 
-  select(-c(GEOID, NAME, variable, moe)) # remove these columns
+  select(-c(GEOID, NAME, variable, moe)) %>%   # remove these column
+  mutate(site_community = str_to_title(site_community))
   
 
 # remove NC from the names
@@ -115,7 +131,7 @@ neighborhood_clean <- neighborhood_census %>%
                              nc_name == "UNITED NEIGHBORHOODS OF THE HISTORIC ARLINGTON HEIGHTS, WEST ADAMS, AND JEFFERSON PARK COMMUNITY" ~ "JEFFERSON PARK",
                              nc_name == "NORTH HILLS EAST" ~ "NORTH HILLS",
                              .default = as.character(nc_name))) %>% # keep all other cell values as are
-  mutate(poverty_percent = (in_poverty/total_population)*100) # make percentage of poverty
+  mutate(poverty_percent = (in_poverty/total_population)*100)  # make percentage of poverty
   
 
 vacancy_LA <- vacancy_us %>% 
@@ -132,21 +148,26 @@ vacancy_LA <- vacancy_us %>%
          available_vacant = B25004_calc_numAvailE # Available vacant housing
   )
 
-# join the census vacancy estimates with the census median income 
-la_tract <- ca_county_tracts %>% 
-  mutate(census_tract = gsub(", Los Angeles County, California", # elements that you want to remove
-                                  "", # replace with blank
-                                  NAME)) %>% 
-  inner_join(vacancy_LA) %>% 
-  rename(median_income = estimate)
 
-la_tract %>% 
-  slice_max(order_by = median_income,
-            n = 15) %>% 
-  ggplot(aes(x = census_tract, 
-             y = vacant_units)) +
-  geom_col() +
-  coord_flip()
+la_neighborhood <- la_tract %>% 
+  left_join(tract_neighborhood, by = "census_tract") %>% 
+  rename("site_community" = "Neighborhood")
+
+vacant_ah <- ah_clean %>% 
+  st_join(la_neighborhood)
+
+vacant_ah %>% 
+  select(site_community = site_community.x, ah_units = total_units.x, vacant_units, median_income) %>% 
+  slice_max(order_by = ah_units,
+            n = 20) %>% 
+  pivot_longer(cols = 2:3,
+               names_to = "type",
+               values_to = "total_units") %>% 
+  ggplot(aes(x = site_community, y = total_units, fill = type)) +
+  geom_col(position = "dodge2") +
+  coord_flip() +
+  theme_classic()
+
 # zoning_geom <- zoning_raw %>% 
 #   mutate(geometry = st_as_sfc(the_geom))
 
