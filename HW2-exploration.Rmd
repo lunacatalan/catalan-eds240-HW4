@@ -45,6 +45,16 @@ ca_county <- get_acs(
   year = 2020
 )
 
+# Median income of tracts
+ca_county_tracts <- get_acs(
+  state = "CA",
+  county = "Los Angeles",
+  geography = "tract",
+  variables = "B19013_001",
+  geometry = TRUE,
+  year = 2020
+)
+
 # total number of people using public transportation per subdivision
 ca_county_transportation <- get_acs(
   state = "CA",
@@ -58,6 +68,8 @@ ca_county_transportation <- get_acs(
 # read in zoning data 
 zoning_raw <- read_csv(here("data/ZONING_PLY.csv")) %>% 
   clean_names()
+
+vacancy_us <- read_csv(here::here("data", "ACS_Housing_Units_Vacancy_Status_Boundaries_-_Census_Tract.csv"))
 ```
 
 # Wrangle / Clean data 
@@ -106,6 +118,35 @@ neighborhood_clean <- neighborhood_census %>%
   mutate(poverty_percent = (in_poverty/total_population)*100) # make percentage of poverty
   
 
+vacancy_LA <- vacancy_us %>% 
+  filter(County == "Los Angeles County") %>% 
+  select(id = OBJECTID, 
+         census_tract = NAME,
+         total_units = B25002_001E, # Total housing units
+         vacant_units = B25004_001E, #Vacant housing units
+         vacant_for_rent = B25004_002E, # Vacant housing units for rent
+         vacant_rented = B25004_003E, # Vacant housing units rented, not occupied
+         vacant_sale = B25004_004E, #Vacant housing units for sale only
+         vacant_sold = B25004_005E, #Vacant housing units sold, not occupied
+         percent_vacant = B25004_calc_pctVacE, # Percent of housing units that are vacant
+         available_vacant = B25004_calc_numAvailE # Available vacant housing
+  )
+
+# join the census vacancy estimates with the census median income 
+la_tract <- ca_county_tracts %>% 
+  mutate(census_tract = gsub(", Los Angeles County, California", # elements that you want to remove
+                                  "", # replace with blank
+                                  NAME)) %>% 
+  inner_join(vacancy_LA) %>% 
+  rename(median_income = estimate)
+
+la_tract %>% 
+  slice_max(order_by = median_income,
+            n = 15) %>% 
+  ggplot(aes(x = census_tract, 
+             y = vacant_units)) +
+  geom_col() +
+  coord_flip()
 # zoning_geom <- zoning_raw %>% 
 #   mutate(geometry = st_as_sfc(the_geom))
 
