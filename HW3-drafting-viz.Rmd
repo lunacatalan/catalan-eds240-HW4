@@ -1,0 +1,135 @@
+# Read in libraries
+
+```{r include = FALSE}
+library(tidyverse)
+library(here)
+library(lubridate)
+library(janitor)
+library(sf)
+library(tidycensus)
+library(patchwork)
+```
+
+# Questions
+
+I plan to pursue the infographic option where I will be exploring affordable housing and housing needs in Los Angeles county. My initial thoughts are that the main image will be a map with the census tracts filled in with a variable. Possible variables include % of census tract by household that qualify for affordable housing, \# of households by tract that qualify for affordable housing, \# of individuals that qualify for affordable housing. Then, I want to zoom into specific tracts (eg. a tract with a high % of people that qualify for affordable housing and a tract with a low %) and compare the two by looking at vacancies in the tracts, affordable housing projects, or affordable housing units (though I haven't found this and it might be hard).\
+
+My question has slightly changed to be more exploratory, however it could be used to explore how LA is doing at implementing the 2015 Executive Directive 13, Support for Affordable Housing (ED 13) aiming to help streamline the development of critical new housing developments that address our housing shortage. To really answer this question we would need a time series component. This could include looking at how the homelessness population in LA county has changed over time, as well as the number of affordable housing available (again, this data is really hard to come by which is why it was more interesting to look at vacancies as a proxy for available space that is maybe being kept off market even as the homeless population grows).\
+
+Variables:\
+- Number of vacancies in each tract from `tidycensus`\
+- Total household income or Total individual income (over the last 12 months) weighted also from `tidycensus`. For this one, based on the household size, and the cap to qualify for affordable housing I am going to assign a new variable that identifies whether that individual qualifies or not (have not done this yet). I have a table from LAHD that has the income bins that decide whether households qualify or not.\
+- Affordable housing developments dataset from [data.gov](https://catalog.data.gov/dataset/hcidla-affordable-housing-projects-list-2003-to-present) which I will wrangle and combine with homeless population data to see time series of number of affordable housing developments in LA county and homeless population over time.\
+- Homeless population (over time? I don't have this data yet)\
+
+Viz Inspo:\
+
+I really like [this](https://www.christophenicault.com/media/visualizations/bigmac_index.png) visualization because it has a map with different elements coming out of it. I want to do something with a map and have specific census tracts zoomed in on to show different trends and give more data. I like that it is easy to compare the graphs from the different counties that are highlighted and see trends.\
+
+I also really like the format of information for [this](https://gradientdescending.com/survivor-confessionals-data-dataset-showcase-for-survivor/) image. The image is broken up into 3 columns, and the visualizations in each are described by the slight text box above it. 
+
+
+# Data
+
+```{r}
+# Median income of tracts
+la_tract_median_income <- get_acs(
+  state = "CA",
+  county = "Los Angeles",
+  geography = "tract",
+  variables = "B19013_001",
+  geometry = TRUE,
+  year = 2020
+)
+
+# load list of variables that I could access
+v17 <- load_variables(2020, "acs5", cache = TRUE)
+
+vacancy_us <- read_csv(here::here("data", "ACS_Housing_Units_Vacancy_Status_Boundaries_-_Census_Tract.csv")) %>% 
+  filter(NAME == "Census Tract 5336.03")
+
+la_tract_vacant <- get_acs(
+  state = "CA",
+  county = "Los Angeles",
+  geography = "tract",
+  variables = "B25004_001",
+  geometry = TRUE,
+  year = 2020
+)
+
+pums_vars_2019 <- pums_variables %>% 
+  filter(year == 2019, survey == "acs1")
+
+pums_total_income <- get_pums(state = "06",
+                              survey = "acs1",
+                              variables = c("PUMA", 
+                                            "PINCP", #Total person's income (signed, use ADJINC to adjust to constant dollars)
+                                            "NP", #	Number of persons in this household
+                                            "HINCP", # Household income (past 12 months, use ADJINC to adjust HINCP to constant dollars
+                                            "GRPIP", #Gross rent as a percentage of household income past 12 months")
+                                            "FINCP" # Family income (past 12 months, use ADJINC to adjust FINCP to constant dollars)
+                                            ),
+                              year = 2019) 
+
+# read in the geographies of the PUMA codes
+html <- xml2::read_html("https://tigerweb.geo.census.gov/tigerwebmain/Files/tab20/tigerweb_tab20_puma_2020_us.html")
+tables = rvest::html_table(html)
+tables <- tables[[1]]
+
+puma_la_geo <- tables %>% 
+  filter(STATE == "6" & grepl(037, PUMA)) 
+
+# read in affordable housing projects in LA from 2003 to present
+ah_raw <- read_csv(here("data/LAHD_Affordable_Housing_Projects_List__2003_to_Present__20240119.csv")) %>% 
+  clean_names()
+```
+
+## Wrangle and clean data
+
+```{r}
+# clean affordable housing data 
+ah_clean <- ah_raw %>% 
+  mutate(fun_date = as.Date(date_funded, tryFormats = c("%m/%d/%Y"))) %>% # make date_funded as date
+  mutate(year = lubridate::year(fun_date)) %>% # make into year column 
+  select(name, year, fun_date, construction_type, site_community, total_units = project_total_units, 
+         housing_type, lahd_funded, in_service_date, gps_coords_on_map) %>% 
+  mutate(gps_coords_on_map = gsub("[POINT()]", # elements that you want to remove
+                                  "", # replace with blank
+                                  gps_coords_on_map)) %>% # remove these elements from gps column 
+  separate_wider_delim(gps_coords_on_map, 
+                       delim = " ", names = c("empty", "coords"), # separate space from before the coordinates
+                       too_many = "merge") %>% 
+  separate_wider_delim(coords, delim = " ", names = c("Longitude", "Latitude"), # split lat and long coords
+                       too_many = "merge") %>% 
+  select(-empty) %>% 
+  st_as_sf(coords = c("Longitude", "Latitude"), # make into geometry object
+                 crs = st_crs(ca_county)) %>% 
+  st_join(ca_county) %>% 
+  select(-c(GEOID, NAME, variable, moe)) %>%   # remove these column
+  mutate(site_community = str_to_title(site_community))
+  
+
+# remove NC from the names
+neighborhood_census$nc_name <- gsub(" NC", "", neighborhood_census$nc_name)
+
+neighborhood_clean <- neighborhood_census %>% 
+  select(nc_name, total_population, in_poverty, owner_occ, renter_occ) %>% 
+  
+  # replace character strings of left and convert to right
+  mutate(nc_name = case_when(nc_name == "WESTLAKE NORTH" ~ "WESTLAKE",
+                             nc_name == "CENTRAL HOLLYWOOD" ~ "HOLLYWOOD",
+                             nc_name == "SOUTH CENTRAL" ~ "CENTRAL",
+                             nc_name == "EAST HOLLYWOOD" ~ "HOLLYWOOD HILLS",
+                             nc_name == "BEL AIR-BEVERLY CREST" ~ "CRESTVIEW",
+                             nc_name == "WILSHIRE CENTER - KOREATOWN" ~ "KOREATOWN",
+                             nc_name == "SUNLAND-TUJUNGA" ~ "SUNLAND",
+                             nc_name == "ELYSIAN VALLEY RIVERSIDE" ~ "ELYSIAN VALLEY",
+                             nc_name == "SILVER LAKE" ~ "SILVERLAKE",
+                             nc_name == "UNITED NEIGHBORHOODS OF THE HISTORIC ARLINGTON HEIGHTS, WEST ADAMS, AND JEFFERSON PARK COMMUNITY" ~ "JEFFERSON PARK",
+                             nc_name == "NORTH HILLS EAST" ~ "NORTH HILLS",
+                             .default = as.character(nc_name))) %>% # keep all other cell values as are
+  mutate(poverty_percent = (in_poverty/total_population)*100)  # make percentage of poverty
+
+pums_total_income_la <- pums_total_income %>% 
+  filter(grepl(037, PUMA))
+```

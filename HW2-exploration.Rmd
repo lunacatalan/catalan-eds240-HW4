@@ -1,7 +1,10 @@
 ---
 title: "Assignment #2 (Part 2)"
 author: "Luna Herschenfeld-Catalán she/her"
-date: 2024-02-03
+date:  2024-02-09
+format:
+  html:
+    embed-resources: true
 ---
 
 # Read in libraries 
@@ -19,7 +22,7 @@ library(patchwork)
 
 Load in the affordable housing data, the neighborhood census data, the california county census data, and zoning data. 
 
-```{r message=FALSE, warning=FALSE, attr.output=FALSE}
+```{r message=FALSE, warning=FALSE, attr.output=FALSE, results='hide'}
 # load API key
 source(here::here("KEYS.R"))
 census_api_key(censusKEY)
@@ -76,7 +79,7 @@ la_tract <- ca_county_tracts %>%
   mutate(census_tract = gsub(", Los Angeles County, California", # elements that you want to remove
                                   "", # replace with blank
                                   NAME)) %>% 
-  inner_join(vacancy_LA) %>% 
+  inner_join(vacancy_us) %>% 
   rename(median_income = estimate) %>% 
   select(-NAME)
 
@@ -85,6 +88,8 @@ tract_neighborhood <- read_csv(here("data/Census_Tract_Locations__LA__20240206.c
                                   "", # replace with blank
                                   Tract)) %>% 
   select(-Tract, census_tract, Neighborhood, Latitude, Longitude) 
+
+covered_dev <- readxl::read_xlsx(here("data", "Covered_Housing_Developments.xlsx"), skip = 1)
 ```
 
 # Wrangle / Clean data 
@@ -155,18 +160,6 @@ la_neighborhood <- la_tract %>%
 
 vacant_ah <- ah_clean %>% 
   st_join(la_neighborhood)
-
-vacant_ah %>% 
-  select(site_community = site_community.x, ah_units = total_units.x, vacant_units, median_income) %>% 
-  slice_max(order_by = ah_units,
-            n = 20) %>% 
-  pivot_longer(cols = 2:3,
-               names_to = "type",
-               values_to = "total_units") %>% 
-  ggplot(aes(x = site_community, y = total_units, fill = type)) +
-  geom_col(position = "dodge2") +
-  coord_flip() +
-  theme_classic()
 
 # zoning_geom <- zoning_raw %>% 
 #   mutate(geometry = st_as_sfc(the_geom))
@@ -243,6 +236,20 @@ ah_clean %>%
   ggplot() +
   geom_sf(data = ca_county_transportation, aes(fill = estimate)) +
   geom_sf(aes(color = housing_type))
+```
+
+```{r eval = FALSE}
+vacant_ah %>% 
+  select(site_community = site_community.x, ah_units = total_units.x, vacant_units, median_income) %>% 
+  slice_max(order_by = ah_units,
+            n = 20) %>% 
+  pivot_longer(cols = 2:3,
+               names_to = "type",
+               values_to = "total_units") %>% 
+  ggplot(aes(x = site_community, y = total_units, fill = type)) +
+  geom_col(position = "dodge2") +
+  coord_flip() +
+  theme_classic()
 ```
 
 ```{r eval = FALSE}
