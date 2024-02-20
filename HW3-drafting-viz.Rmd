@@ -28,10 +28,12 @@ I really like [this](https://www.christophenicault.com/media/visualizations/bigm
 
 I also really like the format of information for [this](https://gradientdescending.com/survivor-confessionals-data-dataset-showcase-for-survivor/) image. The image is broken up into 3 columns, and the visualizations in each are described by the slight text box above it. 
 
-
 # Data
 
 ```{r}
+# load list of variables that I could access
+v17 <- load_variables(2020, "acs5", cache = TRUE)
+
 # Median income of tracts
 la_tract_median_income <- get_acs(
   state = "CA",
@@ -41,9 +43,6 @@ la_tract_median_income <- get_acs(
   geometry = TRUE,
   year = 2020
 )
-
-# load list of variables that I could access
-v17 <- load_variables(2020, "acs5", cache = TRUE)
 
 vacancy_us <- read_csv(here::here("data", "ACS_Housing_Units_Vacancy_Status_Boundaries_-_Census_Tract.csv")) %>% 
   filter(NAME == "Census Tract 5336.03")
@@ -69,7 +68,7 @@ pums_total_income <- get_pums(state = "06",
                                             "GRPIP", #Gross rent as a percentage of household income past 12 months")
                                             "FINCP" # Family income (past 12 months, use ADJINC to adjust FINCP to constant dollars)
                                             ),
-                              year = 2019) 
+                              year = 2019)
 
 # read in the geographies of the PUMA codes
 html <- xml2::read_html("https://tigerweb.geo.census.gov/tigerwebmain/Files/tab20/tigerweb_tab20_puma_2020_us.html")
@@ -77,15 +76,52 @@ tables = rvest::html_table(html)
 tables <- tables[[1]]
 
 puma_la_geo <- tables %>% 
-  filter(STATE == "6" & grepl(037, PUMA)) 
+  filter(STATE == "6" & grepl(037, PUMA)) %>% 
+  select(PUMA, BASENAME, POP100,
+         HU100, # total number of households
+         CENTLAT, CENTLON) %>% 
+  mutate(PUMA = as.character(PUMA)) %>%  # to be able to join to income
+  mutate(PUMA = stringr::str_pad(PUMA, # column 
+                                 5, # number of characters
+                                 pad = "0")) # what to add
+
 
 # read in affordable housing projects in LA from 2003 to present
 ah_raw <- read_csv(here("data/LAHD_Affordable_Housing_Projects_List__2003_to_Present__20240119.csv")) %>% 
   clean_names()
+
+# homeless counts 2020
+homeless_counts <- read_csv(here("data", "Homeless_Counts_2020.csv"))
+
+neighborhood_census <- read_csv(here("data/Census_Data_by_Neighborhood_Council_20240201.csv")) %>%
+  clean_names()
+
+# Median income of districts
+ca_county <- get_acs(
+  state = "CA",
+  county = "Los Angeles",
+  geography = "county subdivision",
+  variables = "B19013_001",
+  geometry = TRUE,
+  year = 2019
+)
+
+# join the census vacancy estimates with the census median income 
+la_tract <- la_tract_tracts %>% 
+  mutate(census_tract = gsub(", Los Angeles County, California", # elements that you want to remove
+                                  "", # replace with blank
+                                  NAME)) %>% 
+  inner_join(vacancy_us) %>% 
+  rename(median_income = estimate) %>% 
+  select(-NAME)
+
+# geometry of the puma shapefiles
+puma <- read_sf(here("data", "tl_2019_06_puma10", "tl_2019_06_puma10.shp"))
 ```
 
 ## Wrangle and clean data
 
+### Affordable housing project data
 ```{r}
 # clean affordable housing data 
 ah_clean <- ah_raw %>% 
@@ -130,6 +166,66 @@ neighborhood_clean <- neighborhood_census %>%
                              .default = as.character(nc_name))) %>% # keep all other cell values as are
   mutate(poverty_percent = (in_poverty/total_population)*100)  # make percentage of poverty
 
-pums_total_income_la <- pums_total_income %>% 
-  filter(grepl(037, PUMA))
+tract_neighborhood <- read_csv(here("data/Census_Tract_Locations__LA__20240206.csv")) %>% 
+  mutate(census_tract = gsub(", Los Angeles County, California", # elements that you want to remove
+                                  "", # replace with blank
+                                  Tract)) %>% 
+  select(-Tract, census_tract, Neighborhood, Latitude, Longitude) 
+
 ```
+
+### Labeling individuals/households as qualifying for affordable housing 
+```{r}
+pums_total_income_la <- pums_total_income %>% 
+  filter(grepl(037, PUMA)) %>% 
+  inner_join(puma_la_geo) %>%
+  st_as_sf(coords = c("CENTLON", "CENTLAT"), # make into geometry object
+                 crs = st_crs(la_tract_median_income))
+  # naniar::replace_with_na(replace = list(HINCP = -60000,
+  #                                        FINCP = -60000,
+  #                                        PINCP = -19999))
+
+puma_tract <- la_tract_median_income %>% 
+  st_join(pums_total_income_la, 
+          join = st_intersects,
+          inner = TRUE) %>% 
+  mutate(NAME = gsub(", Los Angeles County, California", # elements that you want to remove
+                             "", # replace with blank
+                             NAME)) %>% 
+  select(-c(variable, estimate, moe))
+
+
+
+ggplot() +
+  geom_sf(data = la_tract_median_income$geometry) +
+  geom_sf(data = pums_total_income_la$geometry)
+# puma_tract_within <- la_tract_median_income %>% 
+#   st_join(pums_total_income_la, 
+#           join = st_within,
+#           left = TRUE)
+
+puma_la <- puma %>% 
+  filter(grepl(037, PUMACE10))
+
+plot(puma)
+```
+
+
+```{r}
+puma_tract_codes <- read_csv("https://www2.census.gov/geo/docs/maps-data/data/rel2020/2020_Census_Tract_to_2020_PUMA.txt")
+
+codes_la <- puma_tract_codes %>% 
+  filter(STATEFP == "06" & COUNTYFP == "037") %>%  # California state code & Los Angeles county code
+  select(-c(STATEFP, COUNTYFP)) %>% 
+  rename(PUMA = PUMA5CE)
+```
+
+
+### Joining together the pums data with census and neighborhood data 
+```{r}
+
+pums_neighborhood <- pums_total_income_la %>% 
+  left_join(codes_la, by = "PUMA")
+
+```
+
