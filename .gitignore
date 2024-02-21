@@ -5,3 +5,5 @@ data_notes.R
 data/
 
 .DS_Store
+
+visualization-exploration.Rmd
