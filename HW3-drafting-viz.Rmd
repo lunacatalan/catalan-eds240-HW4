@@ -34,16 +34,6 @@ I also really like the format of information for [this](https://gradientdescendi
 # load list of variables that I could access
 v17 <- load_variables(2020, "acs5", cache = TRUE)
 
-# Median income of tracts
-la_tract_median_income <- get_acs(
-  state = "CA",
-  county = "Los Angeles",
-  geography = "tract",
-  variables = "B19013_001",
-  geometry = TRUE,
-  year = 2020
-)
-
 vacancy_us <- read_csv(here::here("data", "ACS_Housing_Units_Vacancy_Status_Boundaries_-_Census_Tract.csv")) %>% 
   filter(NAME == "Census Tract 5336.03")
 
@@ -56,8 +46,44 @@ la_tract_vacant <- get_acs(
   year = 2020
 )
 
+neighborhood_census <- read_csv(here("data/Census_Data_by_Neighborhood_Council_20240201.csv")) %>%
+  clean_names()
+
+# Median income of districts
+ca_county <- get_acs(
+  state = "CA",
+  county = "Los Angeles",
+  geography = "county subdivision",
+  variables = "B19013_001",
+  geometry = TRUE,
+  year = 2019
+)
+
+# join the census vacancy estimates with the census median income 
+la_tract <- la_tract_tracts %>% 
+  mutate(census_tract = gsub(", Los Angeles County, California", # elements that you want to remove
+                                  "", # replace with blank
+                                  NAME)) %>% 
+  inner_join(vacancy_us) %>% 
+  rename(median_income = estimate) %>% 
+  select(-NAME)
+
+
 pums_vars_2019 <- pums_variables %>% 
   filter(year == 2019, survey == "acs1")
+```
+
+
+```{r}
+# Median income of tracts
+la_tract_median_income <- get_acs(
+  state = "CA",
+  county = "Los Angeles",
+  geography = "tract",
+  variables = "B19013_001",
+  geometry = TRUE,
+  year = 2020
+)
 
 pums_total_income <- get_pums(state = "06",
                               survey = "acs1",
@@ -92,28 +118,6 @@ ah_raw <- read_csv(here("data/LAHD_Affordable_Housing_Projects_List__2003_to_Pre
 
 # homeless counts 2020
 homeless_counts <- read_csv(here("data", "Homeless_Counts_2020.csv"))
-
-neighborhood_census <- read_csv(here("data/Census_Data_by_Neighborhood_Council_20240201.csv")) %>%
-  clean_names()
-
-# Median income of districts
-ca_county <- get_acs(
-  state = "CA",
-  county = "Los Angeles",
-  geography = "county subdivision",
-  variables = "B19013_001",
-  geometry = TRUE,
-  year = 2019
-)
-
-# join the census vacancy estimates with the census median income 
-la_tract <- la_tract_tracts %>% 
-  mutate(census_tract = gsub(", Los Angeles County, California", # elements that you want to remove
-                                  "", # replace with blank
-                                  NAME)) %>% 
-  inner_join(vacancy_us) %>% 
-  rename(median_income = estimate) %>% 
-  select(-NAME)
 
 # geometry of the puma shapefiles
 puma <- read_sf(here("data", "tl_2019_06_puma10", "tl_2019_06_puma10.shp"))
@@ -176,6 +180,7 @@ tract_neighborhood <- read_csv(here("data/Census_Tract_Locations__LA__20240206.c
 
 ### Labeling individuals/households as qualifying for affordable housing 
 ```{r}
+
 pums_total_income_la <- pums_total_income %>% 
   filter(grepl(037, PUMA)) %>% 
   inner_join(puma_la_geo) %>%
@@ -187,27 +192,212 @@ pums_total_income_la <- pums_total_income %>%
 
 puma_tract <- la_tract_median_income %>% 
   st_join(pums_total_income_la, 
-          join = st_intersects,
-          inner = TRUE) %>% 
+          join = st_intersects) %>% 
   mutate(NAME = gsub(", Los Angeles County, California", # elements that you want to remove
                              "", # replace with blank
                              NAME)) %>% 
-  select(-c(variable, estimate, moe))
+  select(-c(variable, estimate, moe)) 
+  #na.omit() # removed 2441 observations
 
 
+plot(puma_la$geometry)
+```
 
-ggplot() +
-  geom_sf(data = la_tract_median_income$geometry) +
-  geom_sf(data = pums_total_income_la$geometry)
-# puma_tract_within <- la_tract_median_income %>% 
-#   st_join(pums_total_income_la, 
-#           join = st_within,
-#           left = TRUE)
+# Assigning income categories to individuals 
+```{r}
+puma_individual <- puma_tract %>% 
+  select(NAME, SERIALNO, SPORDER, PWGTP, PINCP, PUMA) 
+
+puma_household <- puma_tract %>% 
+  select(NAME, SERIALNO, WGTP, NP, HINCP, FINCP, GRPIP, PUMA) %>% 
+  mutate(status = ifelse(GRPIP < 30 ,
+                         "not",
+                         ifelse(GRPIP >= 30 & GRPIP < 50,
+                                "cost_burden",
+                                "severe_burden")))
+  #distinct(SERIALNO, .keep_all = TRUE)
 
 puma_la <- puma %>% 
-  filter(grepl(037, PUMACE10))
+  filter(grepl(037, PUMACE10)) %>% 
+  rename(PUMA = PUMACE10)
 
-plot(puma)
+pums_housing_income <- get_pums(state = "06",
+                              survey = "acs1",
+                              variables = c("PUMA",
+                                            "NP", #	Number of persons in this household
+                                            "HINCP", # Household income (past 12 months, use ADJINC to adjust HINCP to constant dollars
+                                            "GRPIP", #Gross rent as a percentage of household income past 12 months")
+                                            "FINCP" # Family income (past 12 months, use ADJINC to adjust FINCP to constant dollars)
+                                            ),
+                              year = 2019)
+
+# https://www.huduser.gov/portal/datasets/il/il2020/2020summary.odn
+people <- c(1, 2, 3, 4, 5, 6, 7, 8)
+very_low <- c(39450, 45050, 50700, 56300, 60850, 65350, 69850, 74350)
+extreme_low <- c(23700, 27050, 30450, 33800, 36550, 39250, 41950, 44650)
+low <- c(63100, 72100, 81100, 90100, 97350, 104550, 111750, 118950)
+
+income_breaks <- data.frame(people, extreme_low, very_low, low)
+
+puma_house_codes <- pums_housing_income %>% 
+  select(SERIALNO, PUMA) %>% 
+  distinct()
+
+puma_h <- pums_housing_income %>% 
+  inner_join(puma_la) %>% 
+  select(SERIALNO, WGTP, NP, HINCP, FINCP, GRPIP) %>% 
+  group_by(SERIALNO) %>% 
+  summarize_all(mean) %>% 
+  left_join(puma_house_codes)
+  
+```
+
+```{r}
+# very low income 
+size <- seq(9, 20, 1)
+very_low <- data.frame()
+row_n <- data.frame()
+
+for (i in seq_along(size)) {
+  income <- 1.32 + (i*.08)
+  limit <- income*56300
+  row <- size[i]
+  row_n <- rbind(row_n, row)
+  very_low = rbind(very_low, limit)
+}
+
+very_low <- cbind(row_n, very_low) %>% 
+  rename(people = X9,
+         very_low = X78820)
+
+extreme <- data.frame()
+for (i in seq_along(size)) {
+  # https://www.huduser.gov/portal/datasets/il/il2020/2020ILCalc3080.odn#calculator
+  income <- 44120 + (i*4480)
+  extreme <- rbind(extreme, income)
+}
+
+low <- data.frame()
+for (i in seq_along(size)) {
+  income <- 1.32 + (i*.08)
+  limit <- income*90100
+  low <- rbind(low, limit)
+}
+
+cols_9_20 <- cbind(extreme, very_low) %>% 
+  rename(extreme_low = X48600) %>% 
+  cbind(low) %>% 
+  rename(low = X126140)
+
+income_breaks <- rbind(income_breaks, cols_9_20)
+```
+
+
+
+```{r}
+
+df_test <- slice_tail(puma_h, n = 10)
+df_test$status <- rep(NA, nrow(df_test))
+
+for (person in seq_along(df_test)) {
+  
+  individual <- df_test$NP[person]
+  
+  income <- income_breaks %>% 
+    filter(people == individual)
+  
+  #print(individual)
+  # Define thresholds for labels
+  extreme_threshold <- income[[2]]
+  very_low_threshold <- income[[3]]
+  low_threshold <- income[[4]]
+  
+  print(extreme_threshold)
+  # # Assign labels based on thresholds
+  df_test$status[person] <- ifelse(df_test[["HINCP"]][person] <= extreme_threshold, 
+                  "extreme",
+                  ifelse(df_test[["HINCP"]][person] <= very_low_threshold & df_test[["HINCP"]][person] > extreme_threshold, 
+                         "very low",
+                         ifelse(df_test[["HINCP"]][person] <= low_threshold & df_test[["HINCP"]][person] > very_low_threshold, "low", 
+                                "not eligible")))
+}
+
+puma_h$status <- rep(NA, nrow(puma_h))
+
+for (person in 1:nrow(puma_h)) {
+  
+  individual <- puma_h$NP[person]
+  
+  income <- income_breaks %>% 
+    filter(people == individual)
+  
+  #print(individual)
+  #print(individual)
+  # Define thresholds for labels
+  extreme_threshold <- income[[2]]
+  very_low_threshold <- income[[3]]
+  low_threshold <- income[[4]]
+  
+  # # Assign labels based on thresholds
+  puma_h$status[person] <- ifelse(puma_h[["HINCP"]][person] <= extreme_threshold, 
+                              "extreme",
+                              ifelse(puma_h[["HINCP"]][person] > extreme_threshold & puma_h[["HINCP"]][person] <= very_low_threshold, 
+                                     "very low",
+                                     ifelse(puma_h[["HINCP"]][person] > very_low_threshold & puma_h[["HINCP"]][person] <= low_threshold, 
+                                            "low",
+                                            ifelse(puma_h[["HINCP"]][person] > low_threshold, "not eligible", "non"))))
+}
+
+```
+
+```{r fig.width = 11, fig.height = 14}
+
+puma_geo <- puma_la %>% 
+  select(PUMA, geometry)
+
+
+puma_plot <- puma_h %>% 
+  group_by(PUMA) %>% 
+  count(status) %>% 
+  pivot_wider(names_from = "status", values_from = "n") %>% 
+  ungroup() %>% 
+  clean_names() %>% 
+  select(puma, extreme, very_low, low, not_eligible) %>% 
+  mutate(PUMA = puma, 
+         total_households = rowSums(.[2:5]),
+         total_eligible = rowSums(.[2:4]),
+         percent_eligible = (total_eligible/total_households) * 100 ) %>% 
+  left_join(puma_geo) %>% 
+  st_as_sf()
+
+my_brew_palette10 <- RColorBrewer::brewer.pal(n = 10, name = 'PuRd')
+
+
+ggplot(puma_plot) +
+  geom_sf(aes(fill = percent_eligible)) +
+  scale_fill_stepsn(colors = my_brew_palette10,
+                    labels = scales::label_percent(scale = 1),
+                    breaks = scales::breaks_width(width = 10)) +
+  theme_minimal() +
+  labs(title = "Households Eligible for Affordable Housing by PUMA in Los Angeles, CA",
+       fill = "Percent Eligible") +
+  theme(
+    axis.text = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_blank(),
+    plot.margin = margin(12, 6, 12, 18),
+    panel.background = element_rect(fill = "white", colour = NA),
+    title = element_text(hjust = )
+  ) +
+  guides(fill = guide_colorbar(barheight = unit(1, units = "mm"),  
+                                 barwidth = unit(100, units = "mm"),
+                                 direction = "horizontal",
+                                 ticks.colour = "grey20",
+                                 title.position = "top",
+                                 label.position = "bottom",
+                                 title.hjust = 0.5))
+
+
 ```
 
 
