@@ -69,6 +69,32 @@ puma_h <- pums_housing_income %>%
   group_by(SERIALNO) %>% 
   summarize_all(mean) %>% 
   left_join(puma_house_codes)
+
+la_tract_vacant <- get_acs(
+  state = "CA",
+  county = "Los Angeles",
+  geography = "tract",
+  variables = "B25004_001",
+  geometry = TRUE,
+  year = 2020
+)
+
+la_tract <- la_tract_vacant %>%
+  mutate(NAME = gsub(", Los Angeles County, California", # elements that you want to remove
+                                  "", # replace with blank
+                                  NAME)) %>% 
+    mutate(NAME = gsub("Census Tract ", # elements that you want to remove
+                                  "", # replace with blank
+                                  NAME)) %>% 
+  filter(NAME != 5991) %>% # islands
+  filter(NAME != 5990) %>% # islands
+  filter(NAME != 9800.03) %>%
+  filter(NAME != 9800.04) %>%
+  filter(!(NAME >= 9000 & NAME <= 9800))
+
+
+
+plot(la_tract$geometry)
   
 ```
 
@@ -196,7 +222,20 @@ puma_plot <- puma_h %>%
          percent_eligible = (total_eligible/total_households) * 100 ) %>% 
   left_join(puma_geo) %>% 
   st_as_sf()
+
+puma_plot_crop <- st_crop(puma_plot, la_tract)
+
 ```
+
+## Suggestions 
+- Public Use Microdata Sample 
+- Get rid of catalina island 
+- get rid of everything above households 
+- cut block off where city makes the ocean 
+- in 2019
+- follow up comparisons 
+  - circle regions on each side of the spectrum and compare 
+  - red yellow blue 
 
 
 ```{r fig.width = 11, fig.height = 14}
@@ -206,12 +245,12 @@ subtitle <- str_wrap(
   "Percent of people that qualify for affordabl housing", 180)
 
 
-my_brew_palette10 <- RColorBrewer::brewer.pal(n = 10, name = 'PuRd')
+my_brew_palette10 <- RColorBrewer::brewer.pal(n = 10, name = 'RdBu', direction -1)
 
 
-ggplot(puma_plot) +
+ggplot(puma_plot_crop) +
   geom_sf(aes(fill = percent_eligible)) +
-  scale_fill_stepsn(colors = my_brew_palette10,
+  scale_fill_stepsn(colors = rev(my_brew_palette10),
                     labels = scales::label_percent(scale = 1),
                     breaks = scales::breaks_width(width = 10)) +
   theme_minimal() +
@@ -232,6 +271,5 @@ ggplot(puma_plot) +
                                  title.position = "top",
                                  label.position = "bottom",
                                  title.hjust = 0.5))
-
 
 ```
