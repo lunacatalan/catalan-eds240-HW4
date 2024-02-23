@@ -245,7 +245,7 @@ subtitle <- str_wrap(
   "Percent of people that qualify for affordabl housing", 180)
 
 
-my_brew_palette10 <- RColorBrewer::brewer.pal(n = 10, name = 'RdBu', direction -1)
+my_brew_palette10 <- RColorBrewer::brewer.pal(n = 10, name = 'RdBu')
 
 
 ggplot(puma_plot_crop) +
@@ -273,3 +273,12 @@ ggplot(puma_plot_crop) +
                                  title.hjust = 0.5))
 
 ```
+
+```{r}
+# homeless counts 2020
+homeless_counts <- read_csv(here("data", "Homeless_Counts_2020.csv"))
+
+neighborhood_census <- read_csv(here("data/Census_Data_by_Neighborhood_Council_20240201.csv")) %>%
+  clean_names()
+```
+
