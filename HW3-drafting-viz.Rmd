@@ -276,9 +276,169 @@ ggplot(puma_plot_crop) +
 
 ```{r}
 # homeless counts 2020
-homeless_counts <- read_csv(here("data", "Homeless_Counts_2020.csv"))
+homeless_counts <- read_csv(here("data", "Homeless_Counts_2020.csv")) %>% 
+  mutate(CSA_Label = gsub("City of ", # elements that you want to remove
+                                  "", # replace with blank
+                                  CSA_Label)) %>% 
+  mutate(CSA_Label = gsub("Los Angeles - ", # elements that you want to remove
+                                  "", # replace with blank
+                                  CSA_Label))
+# has 2196 points
+tract_neighborhood <- read_csv(here("data/Census_Tract_Locations__LA__20240206.csv")) %>% 
+  mutate(census_tract = gsub(", Los Angeles County, California", # elements that you want to remove
+                                  "", # replace with blank
+                                  Tract)) %>% 
+  select(-Tract, census_tract, Neighborhood, Latitude, Longitude) %>% 
+  st_as_sf(coords = c("Longitude", "Latitude"), # make into geometry object
+                 crs = st_crs(puma_plot)) %>% 
+  st_crop(puma_plot_crop) # neighborhoods only in the census tracts of interest
 
-neighborhood_census <- read_csv(here("data/Census_Data_by_Neighborhood_Council_20240201.csv")) %>%
+# make a df with the puma information and census tract geometry 
+puma_tract <- puma_plot_crop %>% # has 67 observations
+  st_join(tract_neighborhood,
+                join = st_intersects) %>% # has the same number of points as the neighborhood
+  clean_names() %>% 
+  select(neighborhood, census_tract, location, puma, geometry) %>% 
+  mutate(census_tract = gsub("Census Tract ", # elements that you want to remove
+                                  "", # replace with blank
+                                  census_tract))
+# rename the tract column
+la_tract <- la_tract %>% 
+  rename(census_tract = NAME) %>% 
+  select(census_tract, geometry)
+
+puma_tract <- puma_tract %>% 
+  st_drop_geometry() %>% 
+  left_join(la_tract)
+
+
+#plot(puma_tract$geometry)
+
+puma_eligibility <- puma_plot %>% 
+  st_drop_geometry() %>% 
+  select(!PUMA)
+
+tract_eligibility <- puma_tract %>% 
+  left_join(puma_eligibility) %>% 
+  filter(!st_is_empty(geometry)) %>% 
+  st_as_sf()
+
+# puma_eligibility <- puma_plot %>% 
+#   select(!PUMA)
+# 
+# tract_eligibility <- puma_tract %>% 
+#   st_as_sf() %>% 
+#   st_join(puma_eligibility,
+#             join = st_intersects) %>% 
+#   filter(!st_is_empty(geometry))
+```
+
+```{r fig.width = 11, fig.height = 11}
+
+ggplot(tract_eligibility) +
+  geom_sf(aes(fill = percent_eligible)) +
+  scale_fill_stepsn(colors = rev(my_brew_palette10),
+                    labels = scales::label_percent(scale = 1),
+                    breaks = scales::breaks_width(width = 10)) +
+  theme_minimal() +
+  labs(title = "Households Eligible for Affordable Housing by PUMA in Los Angeles, CA",
+       fill = "Percent Eligible") +
+  theme(
+    axis.text = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_blank(),
+    plot.margin = margin(12, 6, 12, 18),
+    panel.background = element_rect(fill = "white", colour = NA),
+    title = element_text(hjust = )
+  ) +
+  guides(fill = guide_colorbar(barheight = unit(1, units = "mm"),  
+                                 barwidth = unit(50, units = "mm"),
+                                 direction = "horizontal",
+                                 ticks.colour = "grey20",
+                                 title.position = "top",
+                                 label.position = "bottom",
+                                 title.hjust = 0.5))
+
+```
+# Most and Least Eligible Census / Neighborhood by percent eligibility for affordable housing 
+
+```{r}
+
+top_eligible <- tract_eligibility %>% 
+  slice_max(order_by = percent_eligible,
+            n = 10)
+
+bottom_eligible <- tract_eligibility %>% 
+  slice_min(order_by = percent_eligible,
+            n = 10)
+
+plot(top_eligible$geometry)
+plot(bottom_eligible$geometry)
+```
+
+# Adding the homeless count data 
+
+```{r}
+
+homeless_tract <- tract_eligibility %>% 
+  left_join(homeless_counts %>% 
+              rename(neighborhood = CSA_Label) %>% 
+              mutate(neighborhood == case_when(neighborhood == "Unincorporated - West Chatsworth" ~ "Chatsworth Reservoir"),
+                     .default = as.character(neighborhood)))
+
+my_brew_palette20 <- RColorBrewer::brewer.pal(n = 20, name = 'Greens')
+
+
+ggplot(homeless_tract) +
+  geom_sf(aes(fill = Total_Unsheltered_Pop)) +
+  scale_fill_stepsn(colors = my_brew_palette20,
+                    breaks = scales::breaks_width(width = 300)) +
+  theme_minimal()
+
+  labs(title = "Households Eligible for Affordable Housing by PUMA in Los Angeles, CA",
+       fill = "Percent Eligible") +
+  theme(
+    axis.text = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_blank(),
+    plot.margin = margin(12, 6, 12, 18),
+    panel.background = element_rect(fill = "white", colour = NA),
+    title = element_text(hjust = )
+  ) +
+  guides(fill = guide_colorbar(barheight = unit(1, units = "mm"),  
+                                 barwidth = unit(50, units = "mm"),
+                                 direction = "horizontal",
+                                 ticks.colour = "grey20",
+                                 title.position = "top",
+                                 label.position = "bottom",
+                                 title.hjust = 0.5))
+```
+# Looking at the places where affordable housing projects started
+
+```{r}
+# read in affordable housing projects in LA from 2003 to present
+ah_raw <- read_csv(here("data/LAHD_Affordable_Housing_Projects_List__2003_to_Present__20240119.csv")) %>% 
   clean_names()
+
+# clean affordable housing data 
+ah_clean <- ah_raw %>% 
+  mutate(fun_date = as.Date(date_funded, tryFormats = c("%m/%d/%Y"))) %>% # make date_funded as date
+  mutate(year = lubridate::year(fun_date)) %>% # make into year column 
+  select(name, year, fun_date, construction_type, site_community, total_units = project_total_units, 
+         housing_type, lahd_funded, in_service_date, gps_coords_on_map) %>% 
+  mutate(gps_coords_on_map = gsub("[POINT()]", # elements that you want to remove
+                                  "", # replace with blank
+                                  gps_coords_on_map)) %>% # remove these elements from gps column 
+  separate_wider_delim(gps_coords_on_map, 
+                       delim = " ", names = c("empty", "coords"), # separate space from before the coordinates
+                       too_many = "merge") %>% 
+  separate_wider_delim(coords, delim = " ", names = c("Longitude", "Latitude"), # split lat and long coords
+                       too_many = "merge") %>% 
+  select(-empty) %>% 
+  st_as_sf(coords = c("Longitude", "Latitude"), # make into geometry object
+                 crs = st_crs(la_tract)) %>% 
+  st_join(la_tract) %>% 
+  mutate(site_community = str_to_title(site_community))
+
 ```
 
