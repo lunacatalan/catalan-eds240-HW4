@@ -335,7 +335,7 @@ tract_eligibility <- puma_tract %>%
 
 ```{r fig.width = 11, fig.height = 11}
 
-ggplot(tract_eligibility) +
+tract_eligibility_percent <- ggplot(tract_eligibility) +
   geom_sf(aes(fill = percent_eligible)) +
   scale_fill_stepsn(colors = rev(my_brew_palette10),
                     labels = scales::label_percent(scale = 1),
@@ -360,6 +360,7 @@ ggplot(tract_eligibility) +
                                  title.hjust = 0.5))
 
 ```
+
 # Most and Least Eligible Census / Neighborhood by percent eligibility for affordable housing 
 
 ```{r}
@@ -392,11 +393,10 @@ my_brew_palette20 <- RColorBrewer::brewer.pal(n = 20, name = 'Greens')
 ggplot(homeless_tract) +
   geom_sf(aes(fill = Total_Unsheltered_Pop)) +
   scale_fill_stepsn(colors = my_brew_palette20,
-                    breaks = scales::breaks_width(width = 300)) +
-  theme_minimal()
-
-  labs(title = "Households Eligible for Affordable Housing by PUMA in Los Angeles, CA",
-       fill = "Percent Eligible") +
+                    breaks = scales::breaks_width(width = 150)) +
+  theme_minimal() +
+  labs(title = "Homeless Counts by Census Tract in Los Angeles, CA",
+       fill = "Person Counts") +
   theme(
     axis.text = element_blank(),
     panel.grid.minor = element_blank(),
@@ -405,12 +405,12 @@ ggplot(homeless_tract) +
     panel.background = element_rect(fill = "white", colour = NA),
     title = element_text(hjust = )
   ) +
-  guides(fill = guide_colorbar(barheight = unit(1, units = "mm"),  
-                                 barwidth = unit(50, units = "mm"),
-                                 direction = "horizontal",
+  guides(fill = guide_colorbar(barheight = unit(50, units = "mm"),  
+                                 barwidth = unit(1, units = "mm"),
+                                 direction = "vertical",
                                  ticks.colour = "grey20",
-                                 title.position = "top",
-                                 label.position = "bottom",
+                                 title.position = "right",
+                                 label.position = "left",
                                  title.hjust = 0.5))
 ```
 # Looking at the places where affordable housing projects started
@@ -440,5 +440,36 @@ ah_clean <- ah_raw %>%
   st_join(la_tract) %>% 
   mutate(site_community = str_to_title(site_community))
 
+v17 <- load_variables(2020, "acs5", cache = TRUE)
+
+census_geom <- tract_eligibility %>% 
+  select(census_tract, geometry)
+
+total_vacant <- la_tract_vacant %>% 
+  mutate(NAME = gsub(", Los Angeles County, California", # elements that you want to remove
+                                  "", # replace with blank
+                                  NAME)) %>% 
+  mutate(NAME = gsub("Census Tract ", # elements that you want to remove
+                                  "", # replace with blank
+                                  NAME)) %>% 
+  rename(total_vacant = estimate,
+         census_tract = NAME) %>% 
+  st_drop_geometry() %>% 
+  left_join(census_geom) %>% 
+  st_as_sf()
+
+```
+
+# Plotting affordable housing projects made since 2003
+
+```{r}
+ggplot(la_tract) +
+  geom_sf() +
+  geom_sf(data = ah_clean, alpha = 0.5, size = 1, aes(color = year))
+
+ggplot(total_vacant) +
+  geom_sf(aes(fill = total_vacant)) +
+  scale_fill_stepsn(colors = my_brew_palette20,
+                    breaks = scales::breaks_width(width = 500))
 ```
 
