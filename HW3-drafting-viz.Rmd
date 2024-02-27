@@ -22,6 +22,8 @@ library(patchwork)
 
 # do google fonts
 library(ggtext)
+
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
 ```
 
 # Questions
@@ -54,7 +56,7 @@ FEEDBACK:\
 - Im excited!!!
 
 
-```{r}
+```{r message = FALSE}
 knitr::include_graphics("images/affordable_housing.png")
 knitr::include_graphics("images/drawing.png")
 ```
@@ -62,15 +64,28 @@ knitr::include_graphics("images/drawing.png")
 # Data
 
 ## Wrangle and Clean Data
+ https://www.census.gov/cgi-bin/geo/shapefiles/index.php 
 
-```{r}
+```{r message = FALSE, warning = FALSE, results='hide'}
 # geometry of the puma shapefiles
-puma <- read_sf(here("data", "tl_2019_06_puma10", "tl_2019_06_puma10.shp"))
+puma <- read_sf(here("data", "tl_2022_06_puma20", "tl_2022_06_puma20.shp"))
 
 puma_la <- puma %>% 
-  filter(grepl(037, PUMACE10)) %>% 
-  rename(PUMA = PUMACE10)
+  filter(grepl(037, PUMACE20)) %>% 
+  rename(PUMA = PUMACE20)
 
+# # this is what I was using before 
+# pums_housing_income_2019 <- get_pums(state = "06",
+#                               survey = "acs1",
+#                               variables = c("PUMA",
+#                                             "NP", #	Number of persons in this household
+#                                             "HINCP", # Household income (past 12 months, use ADJINC to adjust HINCP to constant dollars
+#                                             "GRPIP", #Gross rent as a percentage of household income past 12 months")
+#                                             "FINCP" # Family income (past 12 months, use ADJINC to adjust FINCP to constant dollars)
+#                                             ),
+#                               year = 2019)
+
+# updating to newest PUMS data
 pums_housing_income <- get_pums(state = "06",
                               survey = "acs1",
                               variables = c("PUMA",
@@ -79,7 +94,7 @@ pums_housing_income <- get_pums(state = "06",
                                             "GRPIP", #Gross rent as a percentage of household income past 12 months")
                                             "FINCP" # Family income (past 12 months, use ADJINC to adjust FINCP to constant dollars)
                                             ),
-                              year = 2019)
+                              year = 2022)
 
 # https://www.huduser.gov/portal/datasets/il/il2020/2020summary.odn
 people <- c(1, 2, 3, 4, 5, 6, 7, 8)
@@ -95,10 +110,14 @@ puma_house_codes <- pums_housing_income %>%
   distinct()
 
 puma_h <- pums_housing_income %>% 
-  inner_join(puma_la) %>% 
+  inner_join(puma_la, by = "PUMA") %>% 
   select(SERIALNO, WGTP, NP, HINCP, FINCP, GRPIP) %>% 
+  mutate(NP = as.numeric(NP),
+         HINCP = as.numeric(HINCP),
+         FINCP = as.numeric(FINCP),
+         GRPIP = as.numeric(GRPIP)) %>% 
   group_by(SERIALNO) %>% 
-  summarize_all(mean) %>% 
+  summarize_all(mean, na.rm = TRUE) %>% 
   left_join(puma_house_codes)
 
 la_tract_vacant <- get_acs(
@@ -107,22 +126,21 @@ la_tract_vacant <- get_acs(
   geography = "tract",
   variables = "B25004_001",
   geometry = TRUE,
-  year = 2020
+  year = 2022
 )
 
 la_tract <- la_tract_vacant %>%
-  mutate(NAME = gsub(", Los Angeles County, California", # elements that you want to remove
+  mutate(NAME = gsub("; Los Angeles County; California", # elements that you want to remove
+                                  "", # replace with blank
+                                  NAME)) %>%
+  mutate(NAME = gsub("Census Tract ", # elements that you want to remove
                                   "", # replace with blank
                                   NAME)) %>% 
-    mutate(NAME = gsub("Census Tract ", # elements that you want to remove
-                                  "", # replace with blank
-                                  NAME)) %>% 
-  filter(NAME != 5991) %>% # islands
-  filter(NAME != 5990) %>% # islands
-  filter(NAME != 9800.03) %>%
-  filter(NAME != 9800.04) %>%
+  filter(GEOID != "06037599100") %>% # islands
+  filter(GEOID != "06037599000") %>% # islands
+  filter(GEOID != "06037980003") %>%
+  filter(GEOID != "06037980004") %>%
   filter(!(NAME >= 9000 & NAME <= 9800))
-
 
 
 plot(la_tract$geometry)
@@ -132,7 +150,7 @@ plot(la_tract$geometry)
 # Assigning income categories to households 
 
 ## Create income breaks for households above 8 (from 9-20)
-```{r}
+```{r message = FALSE}
 # very low income 
 size <- seq(9, 20, 1)
 very_low <- data.frame()
@@ -180,7 +198,7 @@ income_breaks <- rbind(income_breaks, cols_9_20)
 df_test <- slice_tail(puma_h, n = 10)
 df_test$status <- rep(NA, nrow(df_test))
 
-for (person in seq_along(df_test)) {
+for (person in 1:nrow(df_test)) {
   
   individual <- df_test$NP[person]
   
@@ -197,7 +215,7 @@ for (person in seq_along(df_test)) {
   # # Assign labels based on thresholds
   df_test$status[person] <- ifelse(df_test[["HINCP"]][person] <= extreme_threshold, 
                   "extreme",
-                  ifelse(df_test[["HINCP"]][person] <= very_low_threshold & df_test[["HINCP"]][person] > extreme_threshold, 
+                  ifelse(df_test[["HINCP"]][person] <= very_low_threshold & df_test[["HINCP"]][person] > extreme_threshold,
                          "very low",
                          ifelse(df_test[["HINCP"]][person] <= low_threshold & df_test[["HINCP"]][person] > very_low_threshold, "low", 
                                 "not eligible")))
@@ -205,7 +223,8 @@ for (person in seq_along(df_test)) {
 ```
 
 ### Applying for loop to the whole data set
-```{r}
+
+```{r message = FALSE}
 puma_h$status <- rep(NA, nrow(puma_h))
 
 for (person in 1:nrow(puma_h)) {
@@ -235,10 +254,11 @@ for (person in 1:nrow(puma_h)) {
 ```
 
 
-```{r}
+```{r message = FALSE}
 puma_geo <- puma_la %>% 
   select(PUMA, geometry)
 
+plot(puma_geo$geometry)
 
 puma_plot <- puma_h %>% 
   group_by(PUMA) %>% 
@@ -256,6 +276,7 @@ puma_plot <- puma_h %>%
 
 puma_plot_crop <- st_crop(puma_plot, la_tract)
 
+plot(puma_plot_crop$geometry)
 ```
 
 
@@ -333,6 +354,7 @@ puma_tract <- puma_plot_crop %>% # has 67 observations
   mutate(census_tract = gsub("Census Tract ", # elements that you want to remove
                                   "", # replace with blank
                                   census_tract))
+
 # rename the tract column
 la_tract <- la_tract %>% 
   rename(census_tract = NAME) %>% 
@@ -340,17 +362,18 @@ la_tract <- la_tract %>%
 
 puma_tract <- puma_tract %>% 
   st_drop_geometry() %>% 
+  #select(neighborhood, census_tract, location, puma) %>% 
   left_join(la_tract)
 
 
-#plot(puma_tract$geometry)
+plot(puma_tract$geometry)
 
 puma_eligibility <- puma_plot %>% 
   st_drop_geometry() %>% 
   select(!PUMA)
 
 tract_eligibility <- puma_tract %>% 
-  left_join(puma_eligibility) %>% 
+  left_join(puma_eligibility, by = "puma") %>% 
   filter(!st_is_empty(geometry)) %>% 
   st_as_sf()
 
@@ -363,6 +386,7 @@ tract_eligibility <- puma_tract %>%
 #             join = st_intersects) %>% 
 #   filter(!st_is_empty(geometry))
 ```
+
 # Creating a custom theme
 ```{r}
 library(monochromeR)
@@ -416,6 +440,7 @@ my_theme <- theme(
 
 
 ```{r fig.width = 11, fig.height = 11}
+my_brew_palette10 <- RColorBrewer::brewer.pal(n = 10, name = 'RdBu')
 
 tract_eligibility_percent <- ggplot(tract_eligibility) +
   geom_sf(aes(fill = percent_eligible)) +
@@ -435,7 +460,7 @@ tract_eligibility_percent <- ggplot(tract_eligibility) +
   my_theme 
 
 tract_eligibility_percent
-
+#plot(puma_plot$geometry)
 ```
 
 # Most and Least Eligible Census / Neighborhood by percent eligibility for affordable housing 
@@ -517,7 +542,7 @@ ah_clean <- ah_raw %>%
   st_join(la_tract) %>% 
   mutate(site_community = str_to_title(site_community))
 
-v17 <- load_variables(2020, "acs5", cache = TRUE)
+v17 <- load_variables(2022, "acs5", cache = TRUE)
 
 census_geom <- tract_eligibility %>% 
   select(census_tract, geometry)
