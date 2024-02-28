@@ -1,0 +1,451 @@
+---
+title: "Final Infographic"
+author: "Luna Herschenfeld-Catalán she/her"
+date:  2024-03-09
+format:
+  html:
+    embed-resources: true
+output:
+  html_document:
+    code_folding: hide
+---
+
+```{r include = FALSE}
+
+# Read in libraries
+library(tidyverse)
+library(here)
+library(lubridate)
+library(janitor)
+library(sf)
+library(tidycensus)
+library(patchwork)
+
+# do google fonts
+library(monochromeR)
+library(showtext)
+library(ggtext)
+library(ggrepel)
+
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+```
+
+
+# Data
+
+## Wrangle and Clean Data
+ https://www.census.gov/cgi-bin/geo/shapefiles/index.php 
+
+```{r message = FALSE, warning = FALSE, results='hide'}
+# geometry of the puma 2022 shapefiles
+puma <- read_sf(here("data", "tl_2022_06_puma20", "tl_2022_06_puma20.shp"))
+
+puma_la <- puma %>% 
+  filter(grepl(037, PUMACE20)) %>% 
+  rename(PUMA = PUMACE20)
+
+pums_housing_22 <- read_csv(here::here("data", "pums_2022.csv"))
+
+# https://www.huduser.gov/portal/datasets/il/il2020/2020summary.odn
+people <- c(1, 2, 3, 4, 5, 6, 7, 8)
+very_low <- c(39450, 45050, 50700, 56300, 60850, 65350, 69850, 74350)
+extreme_low <- c(23700, 27050, 30450, 33800, 36550, 39250, 41950, 44650)
+low <- c(63100, 72100, 81100, 90100, 97350, 104550, 111750, 118950)
+
+income_breaks <- data.frame(people, extreme_low, very_low, low)
+
+# remove the duplicates from 2022 data
+puma_house_codes <- pums_housing_22 %>% 
+  select(SERIALNO, PUMA) %>% 
+  distinct()
+
+puma_22 <- pums_housing_22 %>% 
+  inner_join(puma_la, by = "PUMA") %>% 
+  select(SERIALNO, WGTP, NP, HINCP, FINCP, GRPIP) %>% 
+  mutate(NP = as.numeric(NP),
+         HINCP = as.numeric(HINCP),
+         FINCP = as.numeric(FINCP),
+         GRPIP = as.numeric(GRPIP)) %>% 
+  group_by(SERIALNO) %>% 
+  summarize_all(mean, na.rm = TRUE) %>% 
+  left_join(puma_house_codes)
+
+la_tract_vacant <- get_acs(
+  state = "CA",
+  county = "Los Angeles",
+  geography = "tract",
+  variables = "B25004_001",
+  geometry = TRUE,
+  year = 2022
+)
+
+la_tract <- la_tract_vacant %>%
+  mutate(NAME = gsub("; Los Angeles County; California", # elements that you want to remove
+                                  "", # replace with blank
+                                  NAME)) %>%
+  mutate(NAME = gsub("Census Tract ", # elements that you want to remove
+                                  "", # replace with blank
+                                  NAME)) %>% 
+  filter(GEOID != "06037599100") %>% # islands
+  filter(GEOID != "06037599000") %>% # islands
+  filter(GEOID != "06037980003") %>%
+  filter(GEOID != "06037980004") %>%
+  filter(!(NAME >= 9000 & NAME <= 9800))
+  
+```
+
+
+
+## Looking at the places where affordable housing projects started
+
+```{r, message=FALSE}
+# read in affordable housing projects in LA from 2003 to present
+ah_raw <- read_csv(here("data/LAHD_Affordable_Housing_Projects_List__2003_to_Present__20240119.csv")) %>% 
+  clean_names()
+
+# clean affordable housing data 
+ah_clean <- ah_raw %>% 
+  mutate(fun_date = as.Date(date_funded, tryFormats = c("%m/%d/%Y"))) %>% # make date_funded as date
+  mutate(year = lubridate::year(fun_date)) %>% # make into year column 
+  select(name, year, fun_date, construction_type, site_community, total_units = project_total_units, 
+         housing_type, lahd_funded, in_service_date, gps_coords_on_map) %>% 
+  mutate(gps_coords_on_map = gsub("[POINT()]", # elements that you want to remove
+                                  "", # replace with blank
+                                  gps_coords_on_map)) %>% # remove these elements from gps column 
+  separate_wider_delim(gps_coords_on_map, 
+                       delim = " ", names = c("empty", "coords"), # separate space from before the coordinates
+                       too_many = "merge") %>% 
+  separate_wider_delim(coords, delim = " ", names = c("Longitude", "Latitude"), # split lat and long coords
+                       too_many = "merge") %>% 
+  select(-empty) %>% 
+  st_as_sf(coords = c("Longitude", "Latitude"), # make into geometry object
+                 crs = st_crs(la_tract)) %>% 
+  st_join(la_tract) %>% 
+  mutate(site_community = str_to_title(site_community))
+```
+
+# Assigning income categories to households 
+
+## Create income breaks for households above 8 (from 9-20)
+```{r message = FALSE}
+# very low income 
+size <- seq(9, 20, 1)
+very_low <- data.frame()
+row_n <- data.frame()
+
+for (i in seq_along(size)) {
+  income <- 1.32 + (i*.08)
+  limit <- income*56300
+  row <- size[i]
+  row_n <- rbind(row_n, row)
+  very_low = rbind(very_low, limit)
+}
+
+very_low <- cbind(row_n, very_low) %>% 
+  rename(people = X9,
+         very_low = X78820)
+
+extreme <- data.frame()
+for (i in seq_along(size)) {
+  # https://www.huduser.gov/portal/datasets/il/il2020/2020ILCalc3080.odn#calculator
+  income <- 44120 + (i*4480)
+  extreme <- rbind(extreme, income)
+}
+
+low <- data.frame()
+for (i in seq_along(size)) {
+  income <- 1.32 + (i*.08)
+  limit <- income*90100
+  low <- rbind(low, limit)
+}
+
+cols_9_20 <- cbind(extreme, very_low) %>% 
+  rename(extreme_low = X48600) %>% 
+  cbind(low) %>% 
+  rename(low = X126140)
+
+income_breaks <- rbind(income_breaks, cols_9_20)
+```
+
+## Creating For Loop
+
+### Applying for loop to the whole data set
+
+```{r message = FALSE}
+puma_22$status <- rep(NA, nrow(puma_22))
+
+for (person in 1:nrow(puma_22)) {
+  
+  individual <- puma_22$NP[person]
+  
+  income <- income_breaks %>% 
+    filter(people == individual)
+  
+  #print(individual)
+  #print(individual)
+  # Define thresholds for labels
+  extreme_threshold <- income[[2]]
+  very_low_threshold <- income[[3]]
+  low_threshold <- income[[4]]
+  
+  # # Assign labels based on thresholds
+  puma_22$status[person] <- ifelse(puma_22[["HINCP"]][person] <= extreme_threshold, 
+                              "extreme",
+                              ifelse(puma_22[["HINCP"]][person] > extreme_threshold & puma_22[["HINCP"]][person] <= very_low_threshold, 
+                                     "very low",
+                                     ifelse(puma_22[["HINCP"]][person] > very_low_threshold & puma_22[["HINCP"]][person] <= low_threshold, 
+                                            "low",
+                                            ifelse(puma_22[["HINCP"]][person] > low_threshold, "not eligible", "non"))))
+}
+
+```
+
+
+# Mapping census tracts in LA
+
+```{r message = FALSE}
+puma_geo <- puma_la %>% 
+  select(PUMA, geometry)
+
+
+puma_plot <- puma_22 %>% 
+  group_by(PUMA) %>% 
+  count(status) %>% 
+  pivot_wider(names_from = "status", values_from = "n") %>% 
+  ungroup() %>% 
+  clean_names() %>% 
+  select(puma, extreme, very_low, low, not_eligible) %>% 
+  mutate(PUMA = puma, 
+         total_households = rowSums(.[2:5]),
+         total_eligible = rowSums(.[2:4]),
+         percent_eligible = (total_eligible/total_households) * 100 ) %>% 
+  left_join(puma_geo) %>% 
+  st_as_sf()
+
+# crop puma plot with the la_tract to remove the top part of LA
+puma_plot_crop <- st_crop(puma_plot, la_tract)
+
+
+# has 2196 points
+tract_neighborhood <- read_csv(here("data/Census_Tract_Locations__LA__20240206.csv")) %>% 
+  mutate(census_tract = gsub(", Los Angeles County, California", # elements that you want to remove
+                                  "", # replace with blank
+                                  Tract)) %>% 
+  select(-Tract, census_tract, Neighborhood, Latitude, Longitude) %>% 
+  st_as_sf(coords = c("Longitude", "Latitude"), # make into geometry object
+                 crs = st_crs(puma_plot)) %>% 
+  st_crop(puma_plot_crop) # neighborhoods only in the census tracts of interest
+
+# make a df with the puma information and census tract geometry 
+puma_tract <- puma_plot_crop %>% # has 67 observations
+  st_join(tract_neighborhood,
+                join = st_intersects) %>% # has the same number of points as the neighborhood
+  clean_names() %>% 
+  select(neighborhood, census_tract, location, puma, geometry) %>% 
+  mutate(census_tract = gsub("Census Tract ", # elements that you want to remove
+                                  "", # replace with blank
+                                  census_tract))
+
+
+# rename the tract column
+la_tract <- la_tract %>% 
+  rename(census_tract = NAME) %>% 
+  select(census_tract, geometry)
+
+puma_tract <- puma_tract %>% 
+  st_drop_geometry() %>% 
+  left_join(la_tract)
+
+puma_eligibility <- puma_plot %>% 
+  st_drop_geometry() %>% 
+  select(!PUMA)
+
+# make map of the census tracts with the puma household data
+tract_eligibility <- puma_tract %>% 
+  left_join(puma_eligibility, by = "puma") %>% 
+  filter(!st_is_empty(geometry)) %>% 
+  st_as_sf()
+```
+
+# Looking at census tract and the percent of income spent on rent: Rent Burdened
+
+```{r}
+
+rent_burden <- puma_22 %>% 
+  group_by(PUMA) %>% 
+  rename(percent_rent = GRPIP) %>% 
+  select(WGTP, percent_rent, PUMA) %>% 
+  mutate(status = ifelse(percent_rent >= 30, "burden", "not_burden")) %>% 
+  count(status) %>% 
+  pivot_wider(names_from = "status", values_from = "n") %>% 
+  ungroup() %>% 
+  rename(puma = PUMA) %>% 
+  mutate(total = burden+not_burden,
+         percent_burden = (burden/total)*100)
+  
+#plot(rent_burden_2$geometry)
+
+rent_burdened <- puma_tract %>% 
+  left_join(rent_burden) %>% 
+  filter(!st_is_empty(geometry)) %>% 
+  st_as_sf()
+
+```
+
+
+# Creating a custom theme
+```{r}
+library(monochromeR)
+library(showtext)
+library(ggtext)
+library(ggrepel)
+
+# import google fonts 
+font_add_google(name = "Josefin Sans",
+                family = "josefin") # name we provide ggplot
+
+font_add_google(name = "Sen",
+                family = "sen") # name we provide ggplot
+
+font_add_google(name = "Tenor Sans",
+                family = "tenorSans") # name we provide ggplot
+
+# Pairs
+font_add_google(name = "Playfair Display",
+                family = "playfairDisplay") # name we provide ggplot
+
+font_add_google(name = "Alice",
+                family = "alice") # name we provide ggplot
+
+# enable show text here that configures font across platforms
+showtext_auto()
+
+my_theme <- theme(
+  plot.title = element_text(size = 20, face = "bold", family = "playfairDisplay", hjust = 0.5), # Font size set to 16 and bold.
+  plot.caption.position = "plot",
+  plot.caption = element_text(size = 10, hjust = 0, family = "alice"),
+  axis.title = element_text(size = 14), # Font size set to 12.
+  axis.text = element_blank(), # no axis text.
+  axis.ticks = element_blank(),
+  legend.title = element_text(size = 15, face = "bold", family = "alice"), # Font size of the title of the legend set to 12 and bold.
+  legend.text = element_text(size = 10), # font size of the text in the legend
+  panel.background = element_rect(fill = "white"), # color of the panel background
+  panel.grid.major = element_blank(),
+  plot.margin = margin(12, 6, 12, 18),
+  panel.grid.minor = element_blank(), # invisible auxiliary grids
+  plot.background = element_rect(fill = "white"), # plot's background
+  strip.background = element_rect(fill = "white", color = "#ff975d"), # strip background
+  strip.text = element_text(size = 12, face = "bold", family = "alice"), # strip texts
+  plot.title.position = "plot", #position of the plot title
+  legend.position = "top", # position of the legend
+  legend.box.background = element_rect(color = "white"), # background of the plot
+  legend.key.size = unit(1, "cm") # size of the legends key
+)
+```
+
+# Figures 
+
+##
+```{r fig.width = 11, fig.height = 11}
+# eligibility of housing in LA
+tract_eligibility_percent <- ggplot(tract_eligibility) +
+  geom_sf(aes(fill = percent_eligible)) +
+  scale_fill_stepsn(colors = rev(my_brew_palette10),
+                    labels = scales::label_percent(scale = 1),
+                    breaks = scales::breaks_width(width = 5)) +
+  labs(title = "Exploring Affordable Housing Needs in Los Angeles County, CA",
+       fill = "Percent Eligible",
+       caption = "Households Eligible for Affordable Housing by PUMA in Los Angeles, CA") + 
+  guides(fill = guide_colorbar(barheight = unit(1, units = "mm"),  
+                                 barwidth = unit(100, units = "mm"),
+                                 direction = "horizontal",
+                                 ticks.colour = "grey20",
+                                 title.position = "top",
+                                 label.position = "bottom",
+                                 title.hjust = 0.5)) +
+  my_theme 
+
+
+
+my_brew_palette15 <- RColorBrewer::brewer.pal(n = 20, name = 'YlGnBu')
+my_brew_palette10 <- RColorBrewer::brewer.pal(n = 10, name = 'RdBu')
+
+rent_burden_plot <- ggplot(rent_burdened) +
+  geom_sf(aes(fill = percent_burden)) +
+  scale_fill_stepsn(colors = rev(my_brew_palette10),
+                    breaks = scales::breaks_width(width = 5),
+                    labels = scales::label_percent(scale = 1)) +
+  labs(title = "Exploring Affordable Housing Needs in Los Angeles County, CA",
+       fill = "Percent Burdened",
+       caption = "Percent of Households Rent Burdened by Census Tract, Los Angeles, CA (2019). Dots represent location of affordable housing projects from 2013-2020.") +
+  guides(fill = guide_colorbar(barheight = unit(1, units = "mm"),  
+                                 barwidth = unit(100, units = "mm"),
+                                 direction = "horizontal",
+                                 ticks.colour = "grey20",
+                                 title.position = "top",
+                                 label.position = "bottom",
+                                 title.hjust = 0.5)) +
+  my_theme
+
+
+burden_affordable_projects <- rent_burden_plot +
+  geom_sf(data = ah_clean, alpha = 0.5, size = 1)
+
+tract_eligibility_percent
+burden_affordable_projects
+
+```
+
+
+# Selecting the Census Tracts of interest
+```{r}
+top_burden <- rent_burdened %>% 
+  slice_max(order_by = percent_burden,
+            n = 75)
+
+# high burden, high qualification
+top_sub <- top_burden %>% 
+  slice_min(order_by = percent_burden, 
+            n = 25) %>% 
+  st_union()
+
+bottom_burden <- rent_burdened %>% 
+  slice_min(order_by = percent_burden,
+            n = 25)
+
+plot(bottom_burden$geometry)
+
+# low burden, high qualifications
+mid_burden <- bottom_burden %>% 
+  slice_max(order_by = percent_burden,
+            n = 10) %>% 
+  st_union()
+
+plot(mid_burden)
+
+bottom_eligible <- tract_eligibility %>% 
+  slice_min(order_by = percent_eligible,
+            n = 90)
+
+low_burden <- bottom_eligible %>% 
+  slice_max(order_by = percent_eligible,
+            n = 10) %>% 
+  st_union
+
+```
+
+```{r}
+
+# high burden, high qualification
+top_sub %>%  plot()
+
+# low burden, high qualifications
+mid_burden %>%  plot()
+
+# low burden, low qualification
+low_burden %>%  plot()
+
+```
+
+
+

@@ -96,6 +96,17 @@ pums_housing_income <- get_pums(state = "06",
                                             ),
                               year = 2022)
 
+pums_housing_income_05 <- get_pums(state = "06",
+                              survey = "acs1",
+                              variables = c("PUMA",
+                                            "NP", #	Number of persons in this household
+                                            "HINCP", # Household income (past 12 months, use ADJINC to adjust HINCP to constant dollars
+                                            "GRPIP", #Gross rent as a percentage of household income past 12 months")
+                                            "FINCP" # Family income (past 12 months, use ADJINC to adjust FINCP to constant dollars)
+                                            ),
+                              year = 2005)
+
+
 # https://www.huduser.gov/portal/datasets/il/il2020/2020summary.odn
 people <- c(1, 2, 3, 4, 5, 6, 7, 8)
 very_low <- c(39450, 45050, 50700, 56300, 60850, 65350, 69850, 74350)
@@ -146,6 +157,13 @@ la_tract <- la_tract_vacant %>%
 plot(la_tract$geometry)
   
 ```
+# Export 
+
+```{r}
+write.csv(pums_housing_income, "data/pums_2022.csv", row.names=FALSE)
+write.csv(pums_housing_income_05, "data/pums_2005.csv", row.names=FALSE)
+```
+
 
 # Assigning income categories to households 
 
@@ -602,6 +620,7 @@ rent_burdened <- puma_tract %>%
 
 ```{r fig.width = 11, fig.height = 11}
 my_brew_palette15 <- RColorBrewer::brewer.pal(n = 20, name = 'YlGnBu')
+my_brew_palette10 <- RColorBrewer::brewer.pal(n = 10, name = 'RdBu')
 
 rent_burden_plot <- ggplot(rent_burdened) +
   geom_sf(aes(fill = percent_burden)) +
