@@ -347,12 +347,16 @@ my_theme <- theme(
 
 ##
 ```{r fig.width = 11, fig.height = 11}
+
+my_brew_palette15 <- RColorBrewer::brewer.pal(n = 20, name = 'YlGnBu')
+my_brew_palette10 <- RColorBrewer::brewer.pal(n = 10, name = 'RdBu')
+
 # eligibility of housing in LA
 tract_eligibility_percent <- ggplot(tract_eligibility) +
   geom_sf(aes(fill = percent_eligible)) +
   scale_fill_stepsn(colors = rev(my_brew_palette10),
                     labels = scales::label_percent(scale = 1),
-                    breaks = scales::breaks_width(width = 5)) +
+                    breaks = scales::breaks_width(width = 7)) +
   labs(title = "Exploring Affordable Housing Needs in Los Angeles County, CA",
        fill = "Percent Eligible",
        caption = "Households Eligible for Affordable Housing by PUMA in Los Angeles, CA") + 
@@ -367,8 +371,6 @@ tract_eligibility_percent <- ggplot(tract_eligibility) +
 
 
 
-my_brew_palette15 <- RColorBrewer::brewer.pal(n = 20, name = 'YlGnBu')
-my_brew_palette10 <- RColorBrewer::brewer.pal(n = 10, name = 'RdBu')
 
 rent_burden_plot <- ggplot(rent_burdened) +
   geom_sf(aes(fill = percent_burden)) +
@@ -377,7 +379,7 @@ rent_burden_plot <- ggplot(rent_burdened) +
                     labels = scales::label_percent(scale = 1)) +
   labs(title = "Exploring Affordable Housing Needs in Los Angeles County, CA",
        fill = "Percent Burdened",
-       caption = "Percent of Households Rent Burdened by Census Tract, Los Angeles, CA (2019). Dots represent location of affordable housing projects from 2013-2020.") +
+       caption = "Percent of Households Rent Burdened by Census Tract in Los Angeles, CA (2022). Dots represent location of affordable housing projects from 2003-2020.") +
   guides(fill = guide_colorbar(barheight = unit(1, units = "mm"),  
                                  barwidth = unit(100, units = "mm"),
                                  direction = "horizontal",
@@ -399,53 +401,82 @@ burden_affordable_projects
 
 # Selecting the Census Tracts of interest
 ```{r}
-top_burden <- rent_burdened %>% 
+
+# joing the eligibility and rent data together by census tract
+burden_eligible <- rent_burdened %>% 
+  st_drop_geometry() %>% 
+  left_join(tract_eligibility, by = "census_tract") %>% 
+  st_as_sf()
+
+top_burden <- burden_eligible %>% 
   slice_max(order_by = percent_burden,
             n = 75)
 
 # high burden, high qualification
 top_sub <- top_burden %>% 
   slice_min(order_by = percent_burden, 
-            n = 25) %>% 
-  st_union()
+            n = 25) 
 
-bottom_burden <- rent_burdened %>% 
+bottom_burden <- burden_eligible %>% 
   slice_min(order_by = percent_burden,
             n = 25)
 
-plot(bottom_burden$geometry)
+#plot(bottom_burden$geometry)
 
 # low burden, high qualifications
 mid_burden <- bottom_burden %>% 
   slice_max(order_by = percent_burden,
-            n = 10) %>% 
-  st_union()
+            n = 10) 
 
-plot(mid_burden)
+#plot(mid_burden)
 
-bottom_eligible <- tract_eligibility %>% 
+bottom_eligible <- burden_eligible %>% 
   slice_min(order_by = percent_eligible,
             n = 90)
 
 low_burden <- bottom_eligible %>% 
   slice_max(order_by = percent_eligible,
-            n = 10) %>% 
-  st_union
+            n = 10) 
+# %>% 
+#   st_union()
 
 ```
 
-```{r}
+# Plotting the three comparison neighborhoods 
+
+```{r fig.width = 11, fig.height = 11}
 
 # high burden, high qualification
-top_sub %>%  plot()
+top <- ggplot(top_sub) +
+  geom_sf(aes(fill = percent_eligible),
+          fill = "darkred") +
+  labs(title = "Neighborhoods with High Rent Burden, \nHigh Qualification for Affordale Housing") +
+  my_theme
 
 # low burden, high qualifications
-mid_burden %>%  plot()
+mid <- ggplot(mid_burden) +
+  geom_sf(aes(fill = percent_eligible),
+          fill = "orange") +
+  labs(title = "Neighborhoods with Low Rent Burden, \nHigh Qualification for Affordale Housing") +
+  my_theme
 
 # low burden, low qualification
-low_burden %>%  plot()
+low <- ggplot(low_burden) +
+  geom_sf(aes(fill = percent_eligible),
+          fill = "darkblue") +
+  labs(title = "Neighborhoods with Low Rent Burden, \nLow Qualification for Affordale Housing") +
+  my_theme
 
+top / mid / low
 ```
 
+# Ideas 
 
+4 types of comparisons 
+- Poor, with support (aka has affordable housing projects in them)\
+- Poor, without support (no affordable housing projects)\
+- Wealthy, with support (aka has affordable housing projects in them)\
+- Wealthy, no support (no affordable housing projects)\
+- Find the median --> lower than the median is blue, higher than the median is red\
+- Go with a single color and scale it 
 
