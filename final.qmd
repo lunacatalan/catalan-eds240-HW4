@@ -350,11 +350,12 @@ my_theme <- theme(
 
 my_brew_palette15 <- RColorBrewer::brewer.pal(n = 20, name = 'YlGnBu')
 my_brew_palette10 <- RColorBrewer::brewer.pal(n = 10, name = 'RdBu')
+my_brew_palette5 <- RColorBrewer::brewer.pal(n = 10, name = 'Reds')
 
 # eligibility of housing in LA
 tract_eligibility_percent <- ggplot(tract_eligibility) +
   geom_sf(aes(fill = percent_eligible)) +
-  scale_fill_stepsn(colors = rev(my_brew_palette10),
+  scale_fill_stepsn(colors = my_brew_palette5,
                     labels = scales::label_percent(scale = 1),
                     breaks = scales::breaks_width(width = 7)) +
   labs(title = "Exploring Affordable Housing Needs in Los Angeles County, CA",
@@ -374,8 +375,8 @@ tract_eligibility_percent <- ggplot(tract_eligibility) +
 
 rent_burden_plot <- ggplot(rent_burdened) +
   geom_sf(aes(fill = percent_burden)) +
-  scale_fill_stepsn(colors = rev(my_brew_palette10),
-                    breaks = scales::breaks_width(width = 5),
+  scale_fill_stepsn(colors = my_brew_palette5,
+                    breaks = scales::breaks_width(width = 10),
                     labels = scales::label_percent(scale = 1)) +
   labs(title = "Exploring Affordable Housing Needs in Los Angeles County, CA",
        fill = "Percent Burdened",
@@ -402,7 +403,7 @@ burden_affordable_projects
 # Selecting the Census Tracts of interest
 ```{r}
 
-# joing the eligibility and rent data together by census tract
+# joining the eligibility and rent data together by census tract
 burden_eligible <- rent_burdened %>% 
   st_drop_geometry() %>% 
   left_join(tract_eligibility, by = "census_tract") %>% 
@@ -412,31 +413,44 @@ top_burden <- burden_eligible %>%
   slice_max(order_by = percent_burden,
             n = 75)
 
-# high burden, high qualification
-top_sub <- top_burden %>% 
+# high burden, no affordable housing
+burden_non <- top_burden %>% 
   slice_min(order_by = percent_burden, 
             n = 25) 
 
-bottom_burden <- burden_eligible %>% 
-  slice_min(order_by = percent_burden,
+# high burden, affordable housing
+burden_ah <- burden_eligible %>% 
+  slice_max(order_by = percent_burden,
+            n = 30)
+
+plot(burden_ah$geometry)
+
+# low burden, with affordable housing - and also have high percentage eligible for affordable housing
+lowburden_ah <- burden_eligible %>% 
+  slice_max(order_by = percent_eligible,
+            n = 450) %>% 
+  slice_min(order_by = percent_eligible,
             n = 25)
 
-#plot(bottom_burden$geometry)
+plot(lowburden_ah$geometry)
 
-# low burden, high qualifications
-mid_burden <- bottom_burden %>% 
-  slice_max(order_by = percent_burden,
-            n = 10) 
-
-#plot(mid_burden)
-
-bottom_eligible <- burden_eligible %>% 
+# low burden, no affordable housing - low percentage of households that qualify for affordable housing
+lowburden_non <- burden_eligible %>% 
   slice_min(order_by = percent_eligible,
-            n = 90)
+            n = 100) %>% 
+  slice_min(order_by = percent_eligible,
+            n = 20)
 
-low_burden <- bottom_eligible %>% 
-  slice_max(order_by = percent_eligible,
-            n = 10) 
+plot(lowburden_non$geometry)
+
+# neighborhoods right next to undeserved geometry represented by `burden_non`
+interest <- burden_eligible %>% 
+  slice_min(order_by = percent_burden,
+            n = 600) %>% 
+  slice_max(order_by = percent_burden,
+            n = 15)
+
+plot(interest$geometry)
 # %>% 
 #   st_union()
 
@@ -446,37 +460,47 @@ low_burden <- bottom_eligible %>%
 
 ```{r fig.width = 11, fig.height = 11}
 
-# high burden, high qualification
-top <- ggplot(top_sub) +
-  geom_sf(aes(fill = percent_eligible),
-          fill = "darkred") +
-  labs(title = "Neighborhoods with High Rent Burden, \nHigh Qualification for Affordale Housing") +
+# high burden, no affordable housing
+burden_non_plot <- ggplot(burden_non) +
+  geom_sf() +
+  labs(title = "Neighborhoods with High Rent Burden, \nNo Affordable Housing") +
   my_theme
 
-# low burden, high qualifications
-mid <- ggplot(mid_burden) +
-  geom_sf(aes(fill = percent_eligible),
-          fill = "orange") +
-  labs(title = "Neighborhoods with Low Rent Burden, \nHigh Qualification for Affordale Housing") +
+# high burden, affordable housing
+burden_ah_plot <- ggplot(burden_ah) +
+  geom_sf() +
+  labs(title = "Neighborhoods with High Rent Burden, \nWith Affordale Housing") +
   my_theme
 
-# low burden, low qualification
-low <- ggplot(low_burden) +
-  geom_sf(aes(fill = percent_eligible),
-          fill = "darkblue") +
-  labs(title = "Neighborhoods with Low Rent Burden, \nLow Qualification for Affordale Housing") +
+# low burden, with affordable housing - and also have high percentage eligible for affordable housing
+lowburden_ah_plot <- ggplot(lowburden_ah) +
+  geom_sf() +
+  labs(title = "Neighborhoods with Low Rent Burden, \nWith Affordale Housing",
+       subtitle = "and also have high percentage eligible for affordable housing") +
   my_theme
 
-top / mid / low
+# ow percentage of households that qualify for affordable housing
+lowburden_non_plot <- ggplot(lowburden_non) +
+  geom_sf() +
+  labs(title = "Neighborhoods with Low Rent Burden, \nNo Affordale Housing",
+       subtitle = "low percentage of households that qualify for affordable housing") +
+  my_theme
+
+interest_plot <- ggplot(interest) +
+  geom_sf() +
+  labs(title = "Neighborhood with low rent burden right next \nto neighborhood with high rent burden and no support",
+       subtitle = "50% percentage of households that qualify for affordable housing, less than 20% rent burden") +
+  my_theme
+
+burden_non_plot / burden_ah_plot / lowburden_ah_plot / lowburden_non_plot / 
+interest_plot
+
 ```
 
-# Ideas 
+# Next steps 
 
-4 types of comparisons 
-- Poor, with support (aka has affordable housing projects in them)\
-- Poor, without support (no affordable housing projects)\
-- Wealthy, with support (aka has affordable housing projects in them)\
-- Wealthy, no support (no affordable housing projects)\
-- Find the median --> lower than the median is blue, higher than the median is red\
-- Go with a single color and scale it 
+- get information for these areas 
+- Number of households (approximate)
+- How has that changed since 2003 
+
 
