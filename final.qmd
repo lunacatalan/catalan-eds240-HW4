@@ -503,4 +503,55 @@ interest_plot
 - Number of households (approximate)
 - How has that changed since 2003 
 
+# Look at the industry / jobs of people in the census tract 
+
+This data does not exist
+```{r}
+# load list of variables that I could access
+variables <- load_variables(2022, "acs1", cache = TRUE)
+
+#B24114 is for Detailed Occupation for the Civilian Employed Population 16 Years and Over
+#B24115 is for Detailed Occupation for the Civilian Employed Population 16 Years and Over - Male
+#B24116 is for Detailed Occupation for the Civilian Employed Population 16 Years and Over - Female
+B24114 <- variables %>% 
+  filter(str_detect(name, "B24114"))
+
+B24114$name
+
+la_tract_occupation <- get_acs(
+  state = "CA",
+  county = "Los Angeles",
+  geography = "state",
+  variables = "B24114_100",
+  geometry = TRUE,
+  year = 2021
+)
+
+v <- data(acs5_geography)
+```
+
+# Look at the average age / demographic data by tract
+https://walker-data.com/tidycensus/articles/basic-usage.html
+
+```{r}
+# B01001A is Sex by Age (White Alone)
+# B01001B is Sex by Age (Black or African American Alone)
+# B01001
+
+ B01001 <- variables %>% 
+  filter(str_detect(name, "B01001"))
+
+# has the de
+la_tract_age <- get_acs(
+  state = "CA",
+  county = "Los Angeles",
+  geography = "tract",
+  variables = B01001$name,
+  geometry = TRUE,
+  year = 2022
+)
+
+# Next
+# - replace the 
+```
 
