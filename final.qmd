@@ -530,6 +530,25 @@ la_tract_occupation <- get_acs(
 v <- data(acs5_geography)
 ```
 
+## Try this that looks at the number of workers in household based on size
+```{r}
+# B08202 Household Size by Number of Workers in Household
+
+B08202 <- variables %>% 
+  filter(str_detect(name, "B08202"))
+
+la_tract_workers <- get_acs(
+  state = "CA",
+  county = "Los Angeles",
+  geography = "state",
+  variables = B08202$name,
+  geometry = TRUE,
+  year = 2022
+)
+```
+
+
+
 # Look at the average age / demographic data by tract
 https://walker-data.com/tidycensus/articles/basic-usage.html
 
@@ -552,6 +571,10 @@ la_tract_age <- get_acs(
 )
 
 # Next
-# - replace the 
+# - replace the variables with more intuitive information 
+# - make a list of the census tracts of interest 
+# - filter the tracts in the age / race df 
+# - compare across the groups 
+# for clarity: the estimate:total is the sum of the total male and the total female: could be used for total number of that ethnicity
 ```
 
