@@ -336,7 +336,6 @@ my_theme <- theme(
   plot.background = element_rect(fill = "white"), # plot's background
   strip.background = element_rect(fill = "white", color = "#ff975d"), # strip background
   strip.text = element_text(size = 12, face = "bold", family = "alice"), # strip texts
-  plot.title.position = "plot", #position of the plot title
   legend.position = "top", # position of the legend
   legend.box.background = element_rect(color = "white"), # background of the plot
   legend.key.size = unit(1, "cm") # size of the legends key
@@ -346,7 +345,7 @@ my_theme <- theme(
 # Figures 
 
 ##
-```{r fig.width = 11, fig.height = 11}
+```{r fig.width = 11, fig.height = 20}
 
 my_brew_palette15 <- RColorBrewer::brewer.pal(n = 20, name = 'YlGnBu')
 my_brew_palette10 <- RColorBrewer::brewer.pal(n = 10, name = 'RdBu')
@@ -374,6 +373,7 @@ tract_eligibility_percent <- ggplot(tract_eligibility) +
 
 
 rent_burden_plot <- ggplot(rent_burdened) +
+  geom_blank() +
   geom_sf(aes(fill = percent_burden)) +
   scale_fill_stepsn(colors = my_brew_palette5,
                     breaks = scales::breaks_width(width = 10),
@@ -448,7 +448,7 @@ interest <- burden_eligible %>%
   slice_min(order_by = percent_burden,
             n = 600) %>% 
   slice_max(order_by = percent_burden,
-            n = 15)
+            n = 15) 
 
 plot(interest$geometry)
 # %>% 
@@ -461,32 +461,42 @@ plot(interest$geometry)
 ```{r fig.width = 11, fig.height = 11}
 
 # high burden, no affordable housing
-burden_non_plot <- ggplot(burden_non) +
+burden_non_plot <- burden_non %>% 
+  st_union() %>% 
+  ggplot() +
   geom_sf() +
   labs(title = "Neighborhoods with High Rent Burden, \nNo Affordable Housing") +
   my_theme
 
 # high burden, affordable housing
-burden_ah_plot <- ggplot(burden_ah) +
+burden_ah_plot <- burden_ah %>% 
+  st_union() %>% 
+  ggplot() +
   geom_sf() +
   labs(title = "Neighborhoods with High Rent Burden, \nWith Affordale Housing") +
   my_theme
 
 # low burden, with affordable housing - and also have high percentage eligible for affordable housing
-lowburden_ah_plot <- ggplot(lowburden_ah) +
+lowburden_ah_plot <- lowburden_ah %>% 
+  st_union() %>% 
+  ggplot() +
   geom_sf() +
   labs(title = "Neighborhoods with Low Rent Burden, \nWith Affordale Housing",
        subtitle = "and also have high percentage eligible for affordable housing") +
   my_theme
 
 # ow percentage of households that qualify for affordable housing
-lowburden_non_plot <- ggplot(lowburden_non) +
+lowburden_non_plot <- lowburden_non %>% 
+  st_union() %>% 
+  ggplot() +
   geom_sf() +
   labs(title = "Neighborhoods with Low Rent Burden, \nNo Affordale Housing",
        subtitle = "low percentage of households that qualify for affordable housing") +
   my_theme
 
-interest_plot <- ggplot(interest) +
+interest_plot <- interest %>% 
+  st_union() %>% 
+  ggplot() +
   geom_sf() +
   labs(title = "Neighborhood with low rent burden right next \nto neighborhood with high rent burden and no support",
        subtitle = "50% percentage of households that qualify for affordable housing, less than 20% rent burden") +
@@ -496,6 +506,100 @@ burden_non_plot / burden_ah_plot / lowburden_ah_plot / lowburden_non_plot /
 interest_plot
 
 ```
+
+```{r fig.width = 11, fig.height = 11}
+
+base_map <- ggplot(rent_burdened) +
+  geom_blank() +
+  geom_sf(aes(fill = percent_burden)) +
+  scale_fill_stepsn(colors = my_brew_palette5,
+                    breaks = scales::breaks_width(width = 10),
+                    labels = scales::label_percent(scale = 1)) +
+  labs(title = "Exploring Affordable Housing Needs in Los Angeles County, CA",
+       fill = "Percent Burdened") +
+  guides(fill = guide_colorbar(barheight = unit(1, units = "mm"),  
+                                 barwidth = unit(100, units = "mm"),
+                                 direction = "horizontal",
+                                 ticks.colour = "grey20",
+                                 title.position = "top",
+                                 label.position = "bottom",
+                                 title.hjust = 0.5)) +
+  my_theme +
+  geom_sf(data = ah_clean, alpha = 0.5, size = 1)
+
+# burden_non points
+burden_non_pt <- data.frame(
+  y = c(33.9884335),
+  x = c(-118.1758795),
+  yend = c(33.77222),
+  xend = c(-117.92694)
+)
+
+# burden_ah points
+burden_ah_pt <- data.frame(
+  y = c(34.0597395),
+  x = c(-118.2982),
+  yend = c(33.62815),
+  xend = c(- 118.30718)
+)
+
+lowburden_ah_pt <- data.frame(
+  y = c(34.245882),
+  x = c(-118.4209225),
+  yend = c(33.93291),
+  xend = c(-118.66136)
+)
+
+lowburden_non_pt <- data.frame(
+  y = c(33.860177),
+  x = c(-118.388831),
+  yend = c(33.82235),
+  xend = c(-118.53424)
+)
+ 
+# add the lines to the plot in segments - still editing this 
+base_map +
+geom_segment(data = burden_non_pt,
+               aes(x = x, y = y, xend = xend, yend = yend),
+               linetype = "dashed",
+             color = "black") +
+  geom_segment(data = burden_ah_pt,
+               aes(x = x, y = y, xend = xend, yend = yend),
+               linetype = "dashed",
+             color = "black") +
+  geom_segment(data = lowburden_ah_pt,
+               aes(x = x, y = y, xend = xend, yend = yend),
+               linetype = "dashed",
+             color = "black") +
+  geom_segment(data = lowburden_non_pt,
+               aes(x = x, y = y, xend = xend, yend = yend),
+               linetype = "dashed",
+             color = "black") +
+  inset_element(interest_plot, -118.17398, -118.16851, -118.14058, -118.13931, 
+                on_top = TRUE)
+```
+
+
+```{r fig.width = 8, fig.height = 5}
+
+RColorBrewer::brewer.pal(n=10,"Reds")
+
+# looking at the total construction of affordable housing in each year 
+lahd_funding <- ah_clean %>% 
+  drop_na() %>% 
+  group_by(year) %>% 
+  summarize(total_funding = sum(lahd_funded)) %>% 
+  ggplot(aes(x = year, y = total_funding)) +
+  geom_col(fill = "#67000D") +
+  scale_y_continuous(expand=c(0,0),
+                     labels = function(x) paste0(x / 1e6, "M")) +
+  theme_classic() +
+  labs(x = 'Year',
+       y = 'Total Funding (in millions)')
+
+lahd_funding
+```
+
 
 # Next steps 
 
@@ -516,7 +620,7 @@ variables <- load_variables(2022, "acs1", cache = TRUE)
 B24114 <- variables %>% 
   filter(str_detect(name, "B24114"))
 
-B24114$name
+#B24114$name
 
 la_tract_occupation <- get_acs(
   state = "CA",
