@@ -30,11 +30,11 @@ library(ggrepel)
 knitr::opts_chunk$set(message = FALSE, warning = FALSE)
 ```
 
-
 # Data
 
 ## Wrangle and Clean Data
- https://www.census.gov/cgi-bin/geo/shapefiles/index.php 
+
+https://www.census.gov/cgi-bin/geo/shapefiles/index.php
 
 ```{r message = FALSE, warning = FALSE, results='hide'}
 # geometry of the puma 2022 shapefiles
@@ -94,8 +94,6 @@ la_tract <- la_tract_vacant %>%
   
 ```
 
-
-
 ## Looking at the places where affordable housing projects started
 
 ```{r, message=FALSE}
@@ -124,9 +122,10 @@ ah_clean <- ah_raw %>%
   mutate(site_community = str_to_title(site_community))
 ```
 
-# Assigning income categories to households 
+# Assigning income categories to households
 
 ## Create income breaks for households above 8 (from 9-20)
+
 ```{r message = FALSE}
 # very low income 
 size <- seq(9, 20, 1)
@@ -199,7 +198,6 @@ for (person in 1:nrow(puma_22)) {
 }
 
 ```
-
 
 # Mapping census tracts in LA
 
@@ -292,8 +290,8 @@ rent_burdened <- puma_tract %>%
 
 ```
 
-
 # Creating a custom theme
+
 ```{r}
 library(monochromeR)
 library(showtext)
@@ -342,9 +340,10 @@ my_theme <- theme(
 )
 ```
 
-# Figures 
+# Figures
 
-##
+## 
+
 ```{r fig.width = 11, fig.height = 20}
 
 my_brew_palette15 <- RColorBrewer::brewer.pal(n = 20, name = 'YlGnBu')
@@ -399,8 +398,8 @@ burden_affordable_projects
 
 ```
 
-
 # Selecting the Census Tracts of interest
+
 ```{r}
 
 # joining the eligibility and rent data together by census tract
@@ -456,7 +455,7 @@ plot(interest$geometry)
 
 ```
 
-# Plotting the three comparison neighborhoods 
+# Plotting the three comparison neighborhoods
 
 ```{r fig.width = 11, fig.height = 11}
 
@@ -511,7 +510,7 @@ interest_plot
 
 base_map <- ggplot(rent_burdened) +
   geom_blank() +
-  geom_sf(aes(fill = percent_burden)) +
+  geom_sf(aes(fill = percent_burden), color = "black", lwd = 0.05) +
   scale_fill_stepsn(colors = my_brew_palette5,
                     breaks = scales::breaks_width(width = 10),
                     labels = scales::label_percent(scale = 1)) +
@@ -539,15 +538,17 @@ burden_non_pt <- data.frame(
 burden_ah_pt <- data.frame(
   y = c(34.0597395),
   x = c(-118.2982),
-  yend = c(33.62815),
-  xend = c(- 118.30718)
+    yend = c(33.93291),
+  xend = c(-118.66136)
+  # yend = c(33.62815),
+  # xend = c(- 118.30718)
 )
 
 lowburden_ah_pt <- data.frame(
   y = c(34.245882),
   x = c(-118.4209225),
-  yend = c(33.93291),
-  xend = c(-118.66136)
+  yend = c(34.31389),
+  xend = c(-118.12637)
 )
 
 lowburden_non_pt <- data.frame(
@@ -559,30 +560,38 @@ lowburden_non_pt <- data.frame(
  
 # add the lines to the plot in segments - still editing this 
 base_map +
-geom_segment(data = burden_non_pt,
+  geom_curve(data = burden_non_pt,
+             aes(x = x, y = y, xend = xend, yend = yend),
+             arrow = arrow(length = unit(0.01, "npc")),
+             #linetype = "dashed",
+             curvature = -0.5,
+             color = "grey") +
+  geom_curve(data = burden_ah_pt,
+             aes(x = x, y = y, xend = xend, yend = yend),
+             arrow = arrow(length = unit(0.01, "npc")),
+             curvature = 0.5,
+             color = "grey") +
+  geom_curve(data = lowburden_ah_pt,
                aes(x = x, y = y, xend = xend, yend = yend),
-               linetype = "dashed",
-             color = "black") +
-  geom_segment(data = burden_ah_pt,
-               aes(x = x, y = y, xend = xend, yend = yend),
-               linetype = "dashed",
-             color = "black") +
-  geom_segment(data = lowburden_ah_pt,
-               aes(x = x, y = y, xend = xend, yend = yend),
-               linetype = "dashed",
-             color = "black") +
-  geom_segment(data = lowburden_non_pt,
-               aes(x = x, y = y, xend = xend, yend = yend),
-               linetype = "dashed",
-             color = "black") +
-  inset_element(interest_plot, -118.17398, -118.16851, -118.14058, -118.13931, 
-                on_top = TRUE)
+              arrow = arrow(length = unit(0.01, "npc")),
+             curvature = -0.5,
+             color = "grey")
+  # geom_segment(data = lowburden_non_pt,
+  #              aes(x = x, y = y, xend = xend, yend = yend),
+  #              linetype = "dashed",
+  #              color = "grey")
 ```
-
 
 ```{r fig.width = 8, fig.height = 5}
 
 RColorBrewer::brewer.pal(n=10,"Reds")
+
+order_2015 <- data.frame(
+  y = c(200000000),
+  x = c(2010),
+  yend = c(50000000),
+  xend = c(2015)
+)
 
 # looking at the total construction of affordable housing in each year 
 lahd_funding <- ah_clean %>% 
@@ -593,6 +602,14 @@ lahd_funding <- ah_clean %>%
   geom_col(fill = "#67000D") +
   scale_y_continuous(expand=c(0,0),
                      labels = function(x) paste0(x / 1e6, "M")) +
+  geom_curve(data = order_2015,
+               aes(x = x, y = y, xend = xend, yend = yend),
+              arrow = arrow(length = unit(0.01, "npc")),
+             size = 0.1,
+             curvature = -0.5,
+             color = "black") +
+  annotate(geom = "text", x = 2009, y = 200000000, 
+           label = "2015 Directive Order \nfrom Mayor XYZ to facilitate the building \nof affordable housing.") +
   theme_classic() +
   labs(x = 'Year',
        y = 'Total Funding (in millions)')
@@ -600,16 +617,16 @@ lahd_funding <- ah_clean %>%
 lahd_funding
 ```
 
+# Next steps
 
-# Next steps 
+-   get information for these areas
+-   Number of households (approximate)
+-   How has that changed since 2003
 
-- get information for these areas 
-- Number of households (approximate)
-- How has that changed since 2003 
-
-# Look at the industry / jobs of people in the census tract 
+# Look at the industry / jobs of people in the census tract
 
 This data does not exist
+
 ```{r}
 # load list of variables that I could access
 variables <- load_variables(2022, "acs1", cache = TRUE)
@@ -635,6 +652,7 @@ v <- data(acs5_geography)
 ```
 
 ## Try this that looks at the number of workers in household based on size
+
 ```{r}
 # B08202 Household Size by Number of Workers in Household
 
@@ -651,10 +669,13 @@ la_tract_workers <- get_acs(
 )
 ```
 
-
-
 # Look at the average age / demographic data by tract
+
 https://walker-data.com/tidycensus/articles/basic-usage.html
+
+```{r}
+ah_tracts <- unique(ah_clean$NAME)
+```
 
 ```{r}
 # B01001A is Sex by Age (White Alone)
@@ -674,11 +695,297 @@ la_tract_age <- get_acs(
   year = 2022
 )
 
-# Next
-# - replace the variables with more intuitive information 
+tract_ethnicity <- la_tract_age %>%
+  mutate(NAME = gsub("; Los Angeles County; California", # elements that you want to remove
+                                  "", # replace with blank
+                                  NAME)) %>%
+  mutate(NAME = gsub("Census Tract ", # elements that you want to remove
+                                  "", # replace with blank
+                                  NAME)) %>% 
+  rename(census_tract = NAME)
+
+#unique(tract_ethnicity$census_tract)
+
 # - make a list of the census tracts of interest 
+on_plot <- lowburden_ah %>% 
+  mutate(area = "lowburden_ah") %>% 
+  rbind(burden_ah %>% mutate(area = "burden_ah")) %>% 
+  rbind(burden_non %>%  mutate(area = "burden_non")) %>% 
+  rbind(lowburden_non %>% mutate(area = "lowburden_non")) %>% 
+  select(census_tract, area)
+
 # - filter the tracts in the age / race df 
-# - compare across the groups 
-# for clarity: the estimate:total is the sum of the total male and the total female: could be used for total number of that ethnicity
+sex_age_ethnicity <- tract_ethnicity %>% 
+  
+  # - replace the variables with more intuitive information 
+  mutate(variable = gsub("B01001A",
+                       "white",
+                       variable),
+         variable = gsub("B01001B",
+                       "black",
+                       variable),
+         variable = gsub("B01001C",
+                       "ai", # american indian and alaska native
+                       variable),
+         variable = gsub("B01001D",
+                       "asian",
+                       variable),
+         variable = gsub("B01001E",
+                       "haw", # hawaiian and pacific islander
+                       variable),
+         variable = gsub("B01001F",
+                       "other",
+                       variable),
+         variable = gsub("B01001G",
+                       "two", # two or more 
+                       variable),
+                  variable = gsub("B01001H",
+                       "wn", # white non hispanic and latino
+                       variable),
+         variable = gsub("B01001I",
+                       "hisp", # hispanic and latino
+                       variable),
+         variable = gsub("B01001_",
+                       "total_",
+                       variable)) %>% 
+  separate_wider_delim(cols = 3,
+                       delim = "_",
+                       names = c("group", "age_variable")) 
+
+
+#plot(ethnicity$geometry)
+#unique(all_eth$census_tract)  
+#unique(ah_tracts_eth$census_tract)
+
+ah_tracts_eth <- sex_age_ethnicity %>% 
+  filter(census_tract %in% ah_tracts) %>% 
+  filter(age_variable == "001") %>% 
+  select(-c(GEOID, age_variable, moe, geometry)) %>% 
+  mutate(status = "affordable")
+  # pivot_wider(names_from = group,
+  #             values_from = estimate)
+
+ah_tot <- ah_tracts_eth %>% 
+  filter(group == "total") %>% 
+  select(census_tract, group, estimate) %>% 
+  rename(totals = group,
+         total_est = estimate)
+
+ah_tracts_eth <- ah_tracts_eth %>% 
+  filter(group != "total") %>% 
+  left_join(ah_tot, by = "census_tract") %>% 
+  mutate(percent = round((estimate/total_est)*100, 1)) %>% 
+  select(census_tract, group, estimate, percent, status) 
+
+all_eth <- sex_age_ethnicity %>% 
+  filter(census_tract %in% rent_burdened$census_tract) %>% 
+  filter(age_variable == "001") %>% 
+  select(-c(GEOID, age_variable, moe, geometry)) %>% 
+  mutate(status = "non")
+
+all_tot <- all_eth %>% 
+  filter(group == "total") %>% 
+  select(census_tract, group, estimate) %>% 
+  rename(totals = group,
+         total_est = estimate)
+
+all_eth <- all_eth %>% 
+  filter(group != "total") %>% 
+  left_join(all_tot, by = "census_tract") %>% 
+  mutate(percent = round((estimate/total_est)*100, 1)) %>% 
+  select(census_tract, group, estimate, percent, status) 
+
+# combine the tracts
+compare <- all_eth %>% 
+  rbind(ah_tracts_eth) %>% 
+  rename(groups = group) %>% 
+  filter(!groups %in% c("ai", "haw", "two"))
+
+
 ```
 
+# Comparing the demographics of all of LA vs the tracts with affordable housing 
+
+```{r fig.width = 8, fig.height = 5}
+showtext_auto()
+# Custom labels for x-axis
+custom_labels <- c("White (non Hispanic or Latino)", "White", "Other", "Hispanic", "Black", "Asian")
+
+subtitle <- "The demographics of the census tracts in all of the <span style = 'color: #c19089; font-size: 11pt;'>**Los Angeles Metropolitan Area**</span> vs tracts that have<span style = 'color: #67000D; font-size: 11pt;'>**built affordable housing**</span> since 2003."
+
+ggplot(compare) +
+  geom_boxplot(aes(x = groups, y = percent, fill = status), 
+               color = "grey",
+               size = 0.1) +
+  scale_fill_manual(values = c("#67000D", "#c19089")) +
+  coord_flip() +
+  labs(y = "Percent of Census Tract", 
+       x = "",
+       fill = "",
+       subtitle = subtitle) +
+  scale_x_discrete(labels = rev(custom_labels)) +
+  theme_minimal() +
+  guides(fill = "none") +
+  theme(plot.subtitle = ggtext::element_textbox_simple(family = "alice", 
+                                                       size = 10))
+
+
+# subtitle = "The demographics of the census tracts in all of the <span style = 'color: #c19089; font-size: 20pt;'>**Los Angeles Metropolitan Area**</span> vs tracts that <span style = 'color: #67000D; font-size: 20pt;'>**have built affordable housing**</span> since 2003.")
+```
+
+```{r eval = FALSE}
+# for clarity: the estimate:total is the sum of the total male and the total female: could be used for total number of that ethnicity
+ethnicity <- sex_age_ethnicity %>% 
+  filter(census_tract %in% on_plot$census_tract) %>% 
+  filter(age_variable == "001") %>% 
+  select(-c(GEOID, age_variable, moe))
+
+sum_on_plot <- on_plot %>% 
+  left_join(ethnicity, by = "census_tract") %>% 
+  select(-census_tract) %>%
+  st_drop_geometry() %>% 
+  group_by(area, group) %>% 
+  summarize(estimate = sum(estimate))
+  
+ggplot() +
+  geom_col(data = sum_on_plot, aes(x = area, y = estimate, fill = group),
+           position = "dodge")
+```
+
+# Making shapefiles for the census tracts
+
+```{r eval = FALSE}
+# high burden, no affordable housing
+# burden_non_shp
+burden_non %>%
+  st_drop_geometry() %>% 
+  head(1) %>% 
+  select(extreme, very_low, low, not_eligible, total_households, # sum of the other columns
+         percent_eligible
+         ) %>%
+  mutate(p_ex = round((extreme/total_households)*100, 0),
+         p_vl = round((very_low/total_households)*100, 0),
+         p_l = round((low/total_households)*100, 0),
+         p_non = round((not_eligible/total_households)*100, 0)) %>% 
+  select(p_ex, p_vl, p_l, p_non) %>%
+  pivot_longer(cols = 1:4,
+               names_to = "status",
+               values_to = "percent") %>%
+  mutate(name = "low_burden") %>% 
+  ggplot() +
+  geom_bar(aes(x = 1, y = percent, fill = status), 
+           stat = "identity", position = "stack") +
+  scale_fill_viridis(discrete = TRUE) +
+  theme_minimal() +
+  labs(x = NULL, y = "Percentage", title = "Not Burdened")
+
+# high burden, affordable housing
+#buden_ah_shp <- 
+burden_ah %>% 
+  st_drop_geometry() %>% 
+  head(1) %>% 
+  select(extreme, very_low, low, not_eligible, total_households, # sum of the other columns
+         percent_eligible
+         ) %>%
+  mutate(p_ex = round((extreme/total_households)*100, 0),
+         p_vl = round((very_low/total_households)*100, 0),
+         p_l = round((low/total_households)*100, 0),
+         p_non = round((not_eligible/total_households)*100, 0)) %>% 
+  select(p_ex, p_vl, p_l, p_non) %>%
+  pivot_longer(cols = 1:4,
+               names_to = "status",
+               values_to = "percent") %>%
+  mutate(name = "low_burden") %>% 
+  ggplot() +
+  geom_bar(aes(x = 1, y = percent, fill = status), 
+           stat = "identity", position = "stack") +
+  scale_fill_viridis(discrete = TRUE) +
+  theme_minimal() +
+  labs(x = NULL, y = "Percentage", title = "Burden with AH")
+
+# low burden, with affordable housing - and also have high percentage eligible for affordable housing
+#low_burden_shp <- 
+library(viridis)
+lowburden_ah %>% 
+  st_drop_geometry() %>% 
+  head(1) %>% 
+  select(extreme, very_low, low, not_eligible, total_households, # sum of the other columns
+         percent_eligible
+         ) %>%
+  mutate(p_ex = round((extreme/total_households)*100, 0),
+         p_vl = round((very_low/total_households)*100, 0),
+         p_l = round((low/total_households)*100, 0),
+         p_non = round((not_eligible/total_households)*100, 0)) %>%
+  select(p_ex, p_vl, p_l, p_non) %>% 
+  pivot_longer(cols = 1:4,
+               names_to = "status",
+               values_to = "percent") %>%
+  mutate(name = "low_burden",
+         ypos = c(50, 95, 75, 17), # location of labels on the plot
+         status = as.factor(status)) %>% 
+  ggplot() +
+  geom_bar(aes(x = 1, y = percent, fill = reorder(status, percent)), 
+           stat = "identity", position = "stack") +
+  # Add text
+  geom_text(
+    aes(1, y = ypos, label = reorder(status, percent)),
+    hjust = 0,
+    nudge_x = 0,
+    colour = "white",
+    size = 7,
+    family = "alice"
+  ) +
+  scale_fill_viridis(discrete = TRUE) +
+  labs(x = NULL, y = "Percentage", title = "Low Burden with AH") +
+  plot_theme
+
+
+
+        
+```
+
+```{r eval = FALSE}
+# Load necessary libraries
+library(ggplot2)
+library(XML)
+library(svglite)
+
+# Example data
+data <- data.frame(
+  category = c("A", "B", "C"),
+  value1 = c(10, 20, 30),
+  value2 = c(15, 25, 35)
+)
+
+# Create SVG plot
+svg("file:///Users/lunacatalan/Downloads/8z5bfP01.svg", width = 500, height = 500)
+
+# Read SVG image outline
+svg_image <- xmlParse("file:///Users/lunacatalan/Downloads/8z5bfP01.svg")
+
+# Extract the image dimensions
+svg_dims <- xmlAttrs(xmlRoot(svg_image))
+
+# Create the data visualization on top of the SVG image
+plot_gg<- ggplot(data, aes(x = category)) +
+  geom_bar(aes(y = value1, fill = "Value1"), stat = "identity") +
+  geom_bar(aes(y = value2, fill = "Value2"), stat = "identity") +
+  scale_fill_manual(values = c("Value1" = "blue", "Value2" = "red")) +
+  theme_minimal()
+
+# Retrieve the plot
+plot <- ggplot_gtable(ggplot_build(plot_gg))
+
+# Embed the SVG image outline as the background
+print(xmlSVG(svg_image), vp = viewport(width = as.numeric(svg_dims["width"]),
+                                       height = as.numeric(svg_dims["height"]),
+                                       xmax = 1, ymax = 1, 
+                                       just = c("left", "bottom")))
+
+# Print the data visualization on top of the SVG image
+grid.draw(plot)
+
+# End SVG plot
+dev.off()
+
+```
