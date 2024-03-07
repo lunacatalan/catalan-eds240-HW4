@@ -506,39 +506,42 @@ interest_plot
 
 ```
 
+```{r}
+
+unique(burden_non$neighborhood.x)
+
+```
+
+The neighborhoods are "Commerce", "Maywood", "Bell", "Bell Gardens", "Cudahy", "Huntington Park". 
+
 ```{r fig.width = 11, fig.height = 11}
+
+# title = "Exploring Affordable Housing Needs in Los Angeles County, CA"
+my_brew_palette1 <- RColorBrewer::brewer.pal(n = 9, name = 'YlOrBr')
 
 base_map <- ggplot(rent_burdened) +
   geom_blank() +
   geom_sf(aes(fill = percent_burden), color = "black", lwd = 0.05) +
-  scale_fill_stepsn(colors = my_brew_palette5,
-                    breaks = scales::breaks_width(width = 10),
+  scale_fill_stepsn(colors = my_brew_palette1,
+                    breaks = scales::breaks_width(width = 5),
                     labels = scales::label_percent(scale = 1)) +
-  labs(title = "Exploring Affordable Housing Needs in Los Angeles County, CA",
-       fill = "Percent Burdened") +
   guides(fill = guide_colorbar(barheight = unit(1, units = "mm"),  
-                                 barwidth = unit(100, units = "mm"),
+                                 barwidth = unit(200, units = "mm"),
                                  direction = "horizontal",
                                  ticks.colour = "grey20",
                                  title.position = "top",
                                  label.position = "bottom",
                                  title.hjust = 0.5)) +
-  my_theme +
-  geom_sf(data = ah_clean, alpha = 0.5, size = 1)
+  geom_sf(data = ah_clean, alpha = 0.5, size = 1) +
+  labs(fill = "Percent of Census Tract Burdened") +
+  my_theme
 
-# burden_non points
-burden_non_pt <- data.frame(
-  y = c(33.9884335),
-  x = c(-118.1758795),
-  yend = c(33.77222),
-  xend = c(-117.92694)
-)
 
 # burden_ah points
 burden_ah_pt <- data.frame(
   y = c(34.0597395),
-  x = c(-118.2982),
-    yend = c(33.93291),
+  x = c(-118.982),
+    yend = c(33.83291),
   xend = c(-118.66136)
   # yend = c(33.62815),
   # xend = c(- 118.30718)
@@ -557,6 +560,16 @@ lowburden_non_pt <- data.frame(
   yend = c(33.82235),
   xend = c(-118.53424)
 )
+
+# burden_non points
+burden_non_pt <- data.frame(
+  y = c(34),
+  x = c(-118.1358795),
+  #     yend = c(33.93291),
+  # xend = c(-118.66136)
+  yend = c(33.877222),
+  xend = c(-117.92694)
+)
  
 # add the lines to the plot in segments - still editing this 
 base_map +
@@ -565,17 +578,18 @@ base_map +
              arrow = arrow(length = unit(0.01, "npc")),
              #linetype = "dashed",
              curvature = -0.5,
-             color = "grey") +
-  geom_curve(data = burden_ah_pt,
-             aes(x = x, y = y, xend = xend, yend = yend),
-             arrow = arrow(length = unit(0.01, "npc")),
-             curvature = 0.5,
-             color = "grey") +
-  geom_curve(data = lowburden_ah_pt,
-               aes(x = x, y = y, xend = xend, yend = yend),
-              arrow = arrow(length = unit(0.01, "npc")),
-             curvature = -0.5,
-             color = "grey")
+             size = 0.2,
+             color = "black")
+  # geom_curve(data = burden_ah_pt,
+  #            aes(x = x, y = y, xend = xend, yend = yend),
+  #            arrow = arrow(length = unit(0.01, "npc")),
+  #            curvature = 0.5,
+  #            color = "grey") +
+  # geom_curve(data = lowburden_ah_pt,
+  #              aes(x = x, y = y, xend = xend, yend = yend),
+  #             arrow = arrow(length = unit(0.01, "npc")),
+  #            curvature = -0.5,
+  #            color = "grey") +
   # geom_segment(data = lowburden_non_pt,
   #              aes(x = x, y = y, xend = xend, yend = yend),
   #              linetype = "dashed",
@@ -599,7 +613,7 @@ lahd_funding <- ah_clean %>%
   group_by(year) %>% 
   summarize(total_funding = sum(lahd_funded)) %>% 
   ggplot(aes(x = year, y = total_funding)) +
-  geom_col(fill = "#67000D") +
+  geom_col(fill = "#cc4c02") +
   scale_y_continuous(expand=c(0,0),
                      labels = function(x) paste0(x / 1e6, "M")) +
   geom_curve(data = order_2015,
@@ -811,13 +825,13 @@ showtext_auto()
 # Custom labels for x-axis
 custom_labels <- c("White (non Hispanic or Latino)", "White", "Other", "Hispanic", "Black", "Asian")
 
-subtitle <- "The demographics of the census tracts in all of the <span style = 'color: #c19089; font-size: 11pt;'>**Los Angeles Metropolitan Area**</span> vs tracts that have<span style = 'color: #67000D; font-size: 11pt;'>**built affordable housing**</span> since 2003."
+subtitle <- "The demographics of the census tracts in all of the <span style = 'color: #fe9929; font-size: 11pt;'>**Los Angeles Metropolitan Area**</span> vs tracts that have<span style = 'color: #8c2d04; font-size: 11pt;'>**built affordable housing**</span> since 2003."
 
 ggplot(compare) +
   geom_boxplot(aes(x = groups, y = percent, fill = status), 
                color = "grey",
                size = 0.1) +
-  scale_fill_manual(values = c("#67000D", "#c19089")) +
+  scale_fill_manual(values = c("#8c2d04", "#fe9929")) +
   coord_flip() +
   labs(y = "Percent of Census Tract", 
        x = "",
