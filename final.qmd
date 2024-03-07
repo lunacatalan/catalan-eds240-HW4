@@ -318,24 +318,25 @@ font_add_google(name = "Alice",
 # enable show text here that configures font across platforms
 showtext_auto()
 
-my_theme <- theme(
+my_theme_dark <- theme(
   plot.title = element_text(size = 20, face = "bold", family = "playfairDisplay", hjust = 0.5), # Font size set to 16 and bold.
   plot.caption.position = "plot",
-  plot.caption = element_text(size = 10, hjust = 0, family = "alice"),
+  plot.caption = element_text(size = 10, hjust = 0, family = "alice", color = "white"),
   axis.title = element_text(size = 14), # Font size set to 12.
   axis.text = element_blank(), # no axis text.
   axis.ticks = element_blank(),
-  legend.title = element_text(size = 15, face = "bold", family = "alice"), # Font size of the title of the legend set to 12 and bold.
-  legend.text = element_text(size = 10), # font size of the text in the legend
-  panel.background = element_rect(fill = "white"), # color of the panel background
+  legend.title = element_text(size = 15, face = "bold", family = "alice", color = "white"), # Font size of the title of the legend set to 12 and bold.
+  legend.text = element_text(size = 10, color = "white"), # font size of the text in the legend
+  plot.background = element_rect(fill = "black"),
+  panel.background = element_rect(fill = "black"),
+  legend.background = element_rect(fill = "black"),
   panel.grid.major = element_blank(),
   plot.margin = margin(12, 6, 12, 18),
   panel.grid.minor = element_blank(), # invisible auxiliary grids
-  plot.background = element_rect(fill = "white"), # plot's background
-  strip.background = element_rect(fill = "white", color = "#ff975d"), # strip background
-  strip.text = element_text(size = 12, face = "bold", family = "alice"), # strip texts
+  strip.background = element_rect(fill = "black", color = "#ff975d"), # strip background
+  strip.text = element_text(size = 12, face = "bold", family = "alice", color = "white"), # strip texts
   legend.position = "top", # position of the legend
-  legend.box.background = element_rect(color = "white"), # background of the plot
+  legend.box.background = element_rect(color = "black"), # background of the plot
   legend.key.size = unit(1, "cm") # size of the legends key
 )
 ```
@@ -515,14 +516,19 @@ unique(burden_non$neighborhood.x)
 The neighborhoods are "Commerce", "Maywood", "Bell", "Bell Gardens", "Cudahy", "Huntington Park". 
 
 ```{r fig.width = 11, fig.height = 11}
-
 # title = "Exploring Affordable Housing Needs in Los Angeles County, CA"
 my_brew_palette1 <- RColorBrewer::brewer.pal(n = 9, name = 'YlOrBr')
+
+#colorspace::hcl_palettes()
+library(colorspace)
+hcl_palettes(plot = TRUE)
+colors <- sequential_hcl(9, palette = "Reds 2")
+colors
 
 base_map <- ggplot(rent_burdened) +
   geom_blank() +
   geom_sf(aes(fill = percent_burden), color = "black", lwd = 0.05) +
-  scale_fill_stepsn(colors = my_brew_palette1,
+  scale_fill_stepsn(colors = rev(colors),
                     breaks = scales::breaks_width(width = 5),
                     labels = scales::label_percent(scale = 1)) +
   guides(fill = guide_colorbar(barheight = unit(1, units = "mm"),  
@@ -532,11 +538,15 @@ base_map <- ggplot(rent_burdened) +
                                  title.position = "top",
                                  label.position = "bottom",
                                  title.hjust = 0.5)) +
-  geom_sf(data = ah_clean, alpha = 0.5, size = 1) +
+  geom_sf(data = ah_clean, alpha = 0.5, size = 1, color = "orange") +
   labs(fill = "Percent of Census Tract Burdened") +
-  my_theme
+  my_theme_dark
+
+base_map
+```
 
 
+```{r fig.width = 11, fig.height = 11}
 # burden_ah points
 burden_ah_pt <- data.frame(
   y = c(34.0597395),
@@ -601,7 +611,7 @@ base_map +
 RColorBrewer::brewer.pal(n=10,"Reds")
 
 order_2015 <- data.frame(
-  y = c(200000000),
+  y = c(225000000),
   x = c(2010),
   yend = c(50000000),
   xend = c(2015)
@@ -613,20 +623,43 @@ lahd_funding <- ah_clean %>%
   group_by(year) %>% 
   summarize(total_funding = sum(lahd_funded)) %>% 
   ggplot(aes(x = year, y = total_funding)) +
-  geom_col(fill = "#cc4c02") +
+  geom_col(color = "#A9565A",
+           fill = "black") +
   scale_y_continuous(expand=c(0,0),
                      labels = function(x) paste0(x / 1e6, "M")) +
   geom_curve(data = order_2015,
                aes(x = x, y = y, xend = xend, yend = yend),
               arrow = arrow(length = unit(0.01, "npc")),
-             size = 0.1,
+             size = 0.2,
              curvature = -0.5,
-             color = "black") +
-  annotate(geom = "text", x = 2009, y = 200000000, 
-           label = "2015 Directive Order \nfrom Mayor XYZ to facilitate the building \nof affordable housing.") +
+             color = "white") +
+  annotate(geom = "text", x = 2009, y = 250000000, 
+           label = "2015 Directive Order from \nMayor XYZ to facilitate the \nbuilding of affordable housing.",
+           color = "white",
+           family = "alice") +
   theme_classic() +
   labs(x = 'Year',
-       y = 'Total Funding (in millions)')
+       y = 'Total Funding (in millions)'
+  ) +
+  theme(plot.title = element_text(size = 20, face = "bold", family = "playfairDisplay", hjust = 0.5), # Font size set to 16 and bold.
+        plot.caption.position = "plot",
+        plot.caption = element_text(size = 10, hjust = 0, family = "alice", color = "white"),
+        axis.title = element_text(size = 14), # Font size set to 12.
+        axis.text = element_text(size = 10, color = "white", family = "alice"),
+        axis.ticks.x = element_line(size = 10, color = "white"),
+        legend.title = element_text(size = 15, face = "bold", family = "alice", color = "white"), # Font size of the title of the legend set to 12 and bold.
+        legend.text = element_text(size = 10, color = "white"), # font size of the text in the legend
+        plot.background = element_rect(fill = "black"),
+        panel.background = element_rect(fill = "black"),
+        legend.background = element_rect(fill = "black"),
+        plot.margin = margin(12, 6, 12, 18),
+        panel.grid.major.y = element_line(color = "white", size = 0.25), # invisible auxiliary grids
+        strip.background = element_rect(fill = "black", color = "#ff975d"), # strip background
+        strip.text = element_text(size = 12, face = "bold", family = "alice", color = "white"), # strip texts
+        legend.position = "top", # position of the legend
+        legend.box.background = element_rect(color = "black"), # background of the plot
+        legend.key.size = unit(1, "cm") # size of the legends key
+  )
 
 lahd_funding
 ```
