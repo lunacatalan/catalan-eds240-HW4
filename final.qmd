@@ -36,6 +36,7 @@ knitr::opts_chunk$set(message = FALSE, warning = FALSE)
 
 https://www.census.gov/cgi-bin/geo/shapefiles/index.php
 
+
 ```{r message = FALSE, warning = FALSE, results='hide'}
 # geometry of the puma 2022 shapefiles
 puma <- read_sf(here("data", "tl_2022_06_puma20", "tl_2022_06_puma20.shp"))
@@ -171,11 +172,14 @@ income_breaks <- rbind(income_breaks, cols_9_20)
 ### Applying for loop to the whole data set
 
 ```{r message = FALSE}
-puma_22$status <- rep(NA, nrow(puma_22))
+puma_wgt <- puma_22 %>% 
+  uncount(WGTP)
 
-for (person in 1:nrow(puma_22)) {
+puma_wgt$status <- rep(NA, nrow(puma_wgt))
+
+for (person in 1:nrow(puma_wgt)) {
   
-  individual <- puma_22$NP[person]
+  individual <- puma_wgt$NP[person]
   
   income <- income_breaks %>% 
     filter(people == individual)
@@ -188,13 +192,13 @@ for (person in 1:nrow(puma_22)) {
   low_threshold <- income[[4]]
   
   # # Assign labels based on thresholds
-  puma_22$status[person] <- ifelse(puma_22[["HINCP"]][person] <= extreme_threshold, 
+  puma_wgt$status[person] <- ifelse(puma_wgt[["HINCP"]][person] <= extreme_threshold, 
                               "extreme",
-                              ifelse(puma_22[["HINCP"]][person] > extreme_threshold & puma_22[["HINCP"]][person] <= very_low_threshold, 
+                              ifelse(puma_wgt[["HINCP"]][person] > extreme_threshold & puma_wgt[["HINCP"]][person] <= very_low_threshold, 
                                      "very low",
-                                     ifelse(puma_22[["HINCP"]][person] > very_low_threshold & puma_22[["HINCP"]][person] <= low_threshold, 
+                                     ifelse(puma_wgt[["HINCP"]][person] > very_low_threshold & puma_wgt[["HINCP"]][person] <= low_threshold, 
                                             "low",
-                                            ifelse(puma_22[["HINCP"]][person] > low_threshold, "not eligible", "non"))))
+                                            ifelse(puma_wgt[["HINCP"]][person] > low_threshold, "not eligible", "non"))))
 }
 
 ```
@@ -271,9 +275,10 @@ tract_eligibility <- puma_tract %>%
 
 rent_burden <- puma_22 %>% 
   group_by(PUMA) %>% 
-  rename(percent_rent = GRPIP) %>% 
+  rename(percent_rent = GRPIP) %>%  
   select(WGTP, percent_rent, PUMA) %>% 
   mutate(status = ifelse(percent_rent >= 30, "burden", "not_burden")) %>% 
+  uncount(WGTP) %>% # apply the weights
   count(status) %>% 
   pivot_wider(names_from = "status", values_from = "n") %>% 
   ungroup() %>% 
@@ -343,7 +348,7 @@ my_theme_dark <- theme(
 
 # Figures
 
-## 
+==
 
 ```{r fig.width = 11, fig.height = 20}
 
@@ -411,13 +416,15 @@ burden_eligible <- rent_burdened %>%
 
 top_burden <- burden_eligible %>% 
   slice_max(order_by = percent_burden,
-            n = 75)
+            n = 200)
+plot(top_burden$geometry)
 
 # high burden, no affordable housing
 burden_non <- top_burden %>% 
   slice_min(order_by = percent_burden, 
             n = 25) 
 
+plot(burden_non $geometry)
 # high burden, affordable housing
 burden_ah <- burden_eligible %>% 
   slice_max(order_by = percent_burden,
@@ -608,9 +615,9 @@ base_map +
 ```{r fig.width = 6, fig.height = 6}
 
 # Neighborhoods 
-n_labels <- data.frame(long = c(33.968132, 34.0026595, 33.9924535, 33.9583695, 34.067236, 34.043012),
-                     lat = c(-118.154518, -118.152339, -118.195177, -118.1809385, -118.263822, -118.243329), 
-                     label = c("Bell Gardens", "Commerce", "Maywood", "Cudahy", "WC Project", "skid row"))
+n_labels <- data.frame(long = c(33.968132, 33.99926595, 33.9924535, 33.9583695),
+                     lat = c(-118.154518, -118.152339, -118.195177, -118.1809385), 
+                     label = c("Bell Gardens", "Commerce", "Maywood", "Cudahy"))
 
 ggplot(data = burden_non %>% st_union()) +
   geom_sf(fill = "#AA592C", color = "white", 
@@ -624,9 +631,15 @@ ggplot(data = burden_non %>% st_union()) +
             color = "white", 
             family = "alice",
             size = 9) +
-  labs(caption = "Over 75% of the census tracts in the neighborhoods of Commerce, Maywood, Bell Gardens, and Cudahy are eligible for affordable housing in 2022. These tracts") +
+  #labs(caption = "Over 75% of the census tracts in the neighborhoods of \nCommerce, Maywood, Bell Gardens, and Cudahy are\n eligible for affordable housing in 2022. Over 40% of these \nlocations are also rent burdened, highlighting the need \nfor some sort of intervention. No affordable housing \ndevelopments have been built here in the last two \ndecades, indicating an area where affordable housing \nwould help alleviate rent burden for thousands of \nhouseholds.") +
   guides(fill = "none") +
-  my_theme_dark
+  my_theme_dark +
+  theme(plot.caption = element_text(size = 15)
+        #plot.margin = margin(1, 300, 30, 30)
+        )
+
+
+
 ```
 
 ```{r fig.width = 13, fig.height = 5}
@@ -685,10 +698,15 @@ ah_clean_plot %>%
              size = 0.7,
              curvature = 0.3,
              color = "white") +
-  xlim(2000, 2025) +
+  xlim(2000, 2035) +
   #gghighlight(year == 2015) +
   annotate(geom = "text", x = 2009, y = 250000000, 
-           label = "Mayor Eric Garcetti passes the \n2015 Executive Directive 13, \nSupport for Affordable Housing (ED 13).",
+           label = "Mayor Eric Garcetti passes \nExecutive Directive 13, \nSupport for Affordable Housing (ED 13)",
+           color = "white",
+           family = "alice",
+           size = 6) +
+  annotate(geom = "text", x = 2028, y = 250000000, 
+           label = "Mayor Karen Bass passes \nExecutive Directive 1, \nExpedition of Permits (ED 1)",
            color = "white",
            family = "alice",
            size = 6) +
@@ -707,7 +725,7 @@ ah_clean_plot %>%
         plot.background = element_rect(fill = "black"),
         panel.background = element_rect(fill = "black"),
         legend.background = element_rect(fill = "black"),
-        plot.margin = margin(12, 6, 12, 18),
+        plot.margin = margin(20, 6, 12, 20),
         axis.line.x = element_line(color = "white"),
         panel.grid.major.y = element_line(color = "white", size = 0.25), # invisible auxiliary grids
         strip.background = element_rect(fill = "black", color = "#ff975d"), # strip background
@@ -716,6 +734,8 @@ ah_clean_plot %>%
         legend.box.background = element_rect(color = "black"), # background of the plot
         legend.key.size = unit(1, "cm") # size of the legends key
   )
+
+# Mayor Karen Bass passes Executive Directive Order 1, Expedition of Permits (ED 1)
 
 #lahd_funding
 ```
@@ -960,7 +980,6 @@ ggplot(compare) +
 ```
 
 ```{r fig.width = 10, fig.height = 9}
-library(ggridges)
 showtext_auto()
 
 custom_labels <- c("White (non Hispanic \nor Latino)", "White", "Other", "Hispanic", "Black", "Asian")
