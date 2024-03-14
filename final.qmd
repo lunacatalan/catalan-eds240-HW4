@@ -172,14 +172,12 @@ income_breaks <- rbind(income_breaks, cols_9_20)
 ### Applying for loop to the whole data set
 
 ```{r message = FALSE}
-puma_wgt <- puma_22 %>% 
-  uncount(WGTP)
 
-puma_wgt$status <- rep(NA, nrow(puma_wgt))
+puma_22$status <- rep(NA, nrow(puma_22))
 
-for (person in 1:nrow(puma_wgt)) {
+for (person in 1:nrow(puma_22)) {
   
-  individual <- puma_wgt$NP[person]
+  individual <- puma_22$NP[person]
   
   income <- income_breaks %>% 
     filter(people == individual)
@@ -192,14 +190,18 @@ for (person in 1:nrow(puma_wgt)) {
   low_threshold <- income[[4]]
   
   # # Assign labels based on thresholds
-  puma_wgt$status[person] <- ifelse(puma_wgt[["HINCP"]][person] <= extreme_threshold, 
+  puma_22$status[person] <- ifelse(puma_22[["HINCP"]][person] <= extreme_threshold, 
                               "extreme",
-                              ifelse(puma_wgt[["HINCP"]][person] > extreme_threshold & puma_wgt[["HINCP"]][person] <= very_low_threshold, 
+                              ifelse(puma_22[["HINCP"]][person] > extreme_threshold & puma_22[["HINCP"]][person] <= very_low_threshold, 
                                      "very low",
-                                     ifelse(puma_wgt[["HINCP"]][person] > very_low_threshold & puma_wgt[["HINCP"]][person] <= low_threshold, 
+                                     ifelse(puma_22[["HINCP"]][person] > very_low_threshold & puma_22[["HINCP"]][person] <= low_threshold, 
                                             "low",
-                                            ifelse(puma_wgt[["HINCP"]][person] > low_threshold, "not eligible", "non"))))
+                                            ifelse(puma_22[["HINCP"]][person] > low_threshold, "not eligible", "non"))))
 }
+
+# uncount to get the total number of households in each census tract with each status
+puma_wgt <- puma_22 %>% 
+  uncount(WGTP)
 
 ```
 
@@ -210,7 +212,7 @@ puma_geo <- puma_la %>%
   select(PUMA, geometry)
 
 
-puma_plot <- puma_22 %>% 
+puma_plot <- puma_wgt %>% 
   group_by(PUMA) %>% 
   count(status) %>% 
   pivot_wider(names_from = "status", values_from = "n") %>% 
@@ -984,7 +986,7 @@ showtext_auto()
 
 custom_labels <- c("White (non Hispanic \nor Latino)", "White", "Other", "Hispanic", "Black", "Asian")
 
-subtitle <- "Compared to the demographic distribution of <span style = 'color: #DDB472; font-size: 16pt;'>census tracts in Los Angeles overall</span>, the <span style = 'color: skyblue; font-size: 16pt;'>census tracts that have affordable housing</span> projects built since 2003 have **greater** proportions of blank and hispanic individuals."
+subtitle <- "Compared to the demographic distribution of <span style = 'color: #DDB472; font-size: 16pt;'>census tracts in Los Angeles overall</span>, the <span style = 'color: skyblue; font-size: 16pt;'>census tracts that have affordable housing</span> projects built since 2003 have a higher percentage of blank and hispanic individuals."
 subtitle 
 
 c_means <- compare %>% 
@@ -1002,6 +1004,7 @@ c_means <- compare %>%
 #   #                                linetype = status),
 #   scale_y_discrete(expand = c(0.1, 0)) +
 #   xlim(0,100)
+library(ggridges)
 
 ggplot(compare) +
   geom_density_ridges(aes(x = percent, y = groups, fill = status, linetype = status), 
@@ -1013,26 +1016,28 @@ ggplot(compare) +
                    labels = rev(custom_labels)) +
   xlim(0,100) +
   scale_fill_manual(values = c("skyblue", "#DDB472")) +
-  geom_text(data = c_means, aes(x = means, y = groups, label = round(means, 0), 
-                                color = status),
+  geom_text(data = c_means, aes(x = means, y = groups, label = paste(round(means, 0)), color = status),
             family = "alice",
-            vjust = 1.5, 
+            vjust = 1, 
+            hjust = 0,
+            #nudge_x = -7
             size = 6) +
   scale_color_manual(values = c("skyblue", "#DDB472")) +
   labs(y = "Percent of Census Tract", 
-       x = "",
-      caption = subtitle,
+       x = "Percent of Census Tract",
+       #caption = subtitle,
        fill = ""
        ) +
   #scale_x_discrete(labels = rev(custom_labels)) +
   guides(fill = "none", linetype = "none", color = "none") +
-  theme(plot.subtitle = element_markdown(ggtext::element_textbox_simple(family = "alice", size = 10, color = "white"))) +
-  theme(plot.title = element_text(size = 20, face = "bold", family = "playfairDisplay", hjust = 0.5), # Font size set to 16 and bold.
+  theme(plot.title = element_text(size = 20, family = "playfairDisplay", hjust = 0.5), # Font size set to 16 and bold.
         plot.caption.position = "plot",
+        plot.title.position = "plot",
         plot.caption =  ggtext::element_textbox_simple(size = 15, hjust = 0, family = "alice", color = "white"),
         axis.title = element_text(size = 14), # Font size set to 12.
         axis.text.y = element_text(size = 16, color = "white", family = "alice"),
         axis.text.x = element_blank(),
+        axis.title.x = element_text(size = 16, color = "white", family = "alice"),
         #axis.ticks.x = element_line(size = 10, color = "white"),
         legend.title = element_text(size = 15, face = "bold", family = "alice", color = "white"), # Font size of the title of the legend set to 12 and bold.
         legend.text = element_text(size = 10, color = "white"), # font size of the text in the legend
@@ -1042,7 +1047,7 @@ ggplot(compare) +
         plot.margin = margin(12, 6, 12, 18),
         #axis.line.x = element_line(color = "white"),
         panel.grid = element_blank(), # invisible auxiliary grids
-        #panel.grid.minor.x = element_line(color = "white"),
+        panel.grid.minor.x = element_line(color = "white", size = 0.1, linetype = "dashed"),
         strip.background = element_rect(fill = "black", color = "#ff975d"), # strip background
         strip.text = element_text(size = 12, face = "bold", family = "alice", color = "white"), # strip texts
         legend.position = "top", # position of the legend
